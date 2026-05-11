@@ -120,7 +120,7 @@ export default class PreviewPage extends React.Component {
     // Close the previous socket
     const tmpSocket = window.socket
 
-    window.history.replaceState(null, '', `/${bufnr}`)
+    window.history.replaceState(null, '', `/page/${bufnr}`)
 
     const socket = io({
       query: {
@@ -147,8 +147,13 @@ export default class PreviewPage extends React.Component {
     }
   }
 
+  getBufnrFromPathname() {
+    const pathname = window.location.pathname.replace(/\/+$/, '')
+    return parseFloat(pathname.split('/').pop())
+  }
+
   componentDidMount() {
-    this.startSocket(parseFloat(window.location.pathname.split('/')[2]))
+    this.startSocket(this.getBufnrFromPathname())
   }
 
   onConnect() {
