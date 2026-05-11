@@ -53,14 +53,14 @@ const DEFAULT_OPTIONS = {
     // Highlighter function. Should return escaped HTML,
     // or '' if the source string is not changed and should be escaped externally.
     // If result starts with <pre... internal wrapper is skipped.
-    highlight: function (str, lang) {
-      if (lang && hljs.getLanguage(lang)) {
-        try {
-          return `<pre class="hljs"><code>${
-            hljs.highlight(lang, str, true).value
-          }</code></pre>`;
-        } catch (__) {}
-      }
+      highlight: function (str, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try {
+            return `<pre class="hljs"><code>${
+             hljs.highlight(str, { language: lang, ignoreIllegals: true }).value
+           }</code></pre>`;
+          } catch (__) {}
+        }
 
       return `<pre class="hljs"><code>${escape(str)}</code></pre>`;
     },
@@ -99,6 +99,7 @@ export default class PreviewPage extends React.Component {
     this.hideThemeButton = this.hideThemeButton.bind(this)
     this.handleThemeChange = this.handleThemeChange.bind(this)
     this.applyReviewComment = this.applyReviewComment.bind(this)
+    this.applyDocumentTheme = this.applyDocumentTheme.bind(this)
   }
 
   handleThemeChange() {
@@ -134,6 +135,15 @@ export default class PreviewPage extends React.Component {
         }
       })
     })
+  }
+
+  applyDocumentTheme(theme) {
+    if (typeof document === 'undefined' || !theme) {
+      return
+    }
+
+    document.documentElement.setAttribute('data-theme', theme)
+    document.body.setAttribute('data-theme', theme)
   }
 
   startSocket(bufnr) {
@@ -318,6 +328,7 @@ export default class PreviewPage extends React.Component {
         contentEditable: options.content_editable,
         disableFilename: options.disable_filename
       }, () => {
+        this.applyDocumentTheme(theme)
         if (refreshContent) {
           try {
             // eslint-disable-next-line
@@ -391,48 +402,50 @@ export default class PreviewPage extends React.Component {
           <script type="text/javascript" src="/_static/full.render.js"></script>
         </Head>
         <main data-theme={this.state.theme}>
-          <div id="page-ctn" contentEditable={contentEditable ? 'true' : 'false'}>
-            { disableFilename == 0 &&
-              <header
-                id="page-header"
-                onMouseEnter={this.showThemeButton}
-                onMouseLeave={this.hideThemeButton}
-              >
-                <h3>
-                  <svg
-                    viewBox="0 0 16 16"
-                    version="1.1"
-                    width="16"
-                    height="16"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"
+          <div id="page-scroll">
+            <div id="page-ctn" contentEditable={contentEditable ? 'true' : 'false'}>
+              { disableFilename == 0 &&
+                <header
+                  id="page-header"
+                  onMouseEnter={this.showThemeButton}
+                  onMouseLeave={this.hideThemeButton}
+                >
+                  <h3>
+                    <svg
+                      viewBox="0 0 16 16"
+                      version="1.1"
+                      width="16"
+                      height="16"
+                      aria-hidden="true"
                     >
-                    </path>
-                  </svg>
-                  {name}
-                </h3>
-                {themeModeIsVisible && (
-                  <label id="toggle-theme" for="theme">
-                    <input
-                      id="theme"
-                      type="checkbox"
-                      checked={theme === "dark"}
-                      onChange={this.handleThemeChange}
-                    />
-                    <span>Dark Mode</span>
-                  </label>
-               )}
-              </header>
-            }
-            <section
-              className="markdown-body"
-              dangerouslySetInnerHTML={{
-                __html: content
-              }}
-            />
+                      <path
+                        fill-rule="evenodd"
+                        d="M3 5h4v1H3V5zm0 3h4V7H3v1zm0 2h4V9H3v1zm11-5h-4v1h4V5zm0 2h-4v1h4V7zm0 2h-4v1h4V9zm2-6v9c0 .55-.45 1-1 1H9.5l-1 1-1-1H2c-.55 0-1-.45-1-1V3c0-.55.45-1 1-1h5.5l1 1 1-1H15c.55 0 1 .45 1 1zm-8 .5L7.5 3H2v9h6V3.5zm7-.5H9.5l-.5.5V12h6V3z"
+                      >
+                      </path>
+                    </svg>
+                    {name}
+                  </h3>
+                  {themeModeIsVisible && (
+                    <label id="toggle-theme" for="theme">
+                      <input
+                        id="theme"
+                        type="checkbox"
+                        checked={theme === "dark"}
+                        onChange={this.handleThemeChange}
+                      />
+                      <span>Dark Mode</span>
+                    </label>
+                 )}
+                </header>
+              }
+              <section
+                className="markdown-body"
+                dangerouslySetInnerHTML={{
+                  __html: content
+                }}
+              />
+            </div>
           </div>
         </main>
       </React.Fragment>

@@ -57,6 +57,15 @@ function getPageContainer () {
   return document.getElementById('page-ctn')
 }
 
+function updatePageContainerCommentState (hasComments) {
+  const container = getPageContainer()
+  if (!container) {
+    return
+  }
+
+  container.classList.toggle('review-comments-active', hasComments)
+}
+
 function getThemeHost () {
   return document.querySelector('main') || getPageContainer() || document.body
 }
@@ -559,10 +568,12 @@ function renderCommentPanel (comments) {
 
   if (comments.length === 0) {
     panel.classList.add('review-comments-panel-empty')
+    updatePageContainerCommentState(false)
     return
   }
 
   panel.classList.remove('review-comments-panel-empty')
+  updatePageContainerCommentState(true)
 
   const toolbar = createPanelToolbar()
   panel.appendChild(toolbar)
@@ -584,9 +595,10 @@ function renderCommentPanel (comments) {
   let currentTop = toolbarHeight
   anchoredComments.forEach(({ comment, anchor }) => {
     const card = createCommentCard(comment)
+    panel.appendChild(card)
+
     card.style.position = 'absolute'
     card.style.visibility = 'hidden'
-    panel.appendChild(card)
 
     const desiredTop = Math.max(anchor.top - 8, toolbarHeight)
     const nextTop = Math.max(desiredTop, currentTop)
@@ -783,28 +795,16 @@ export function renderReviewComments ({ snapshot, sourceLineCount, onApplyCommen
 
   const blockEntries = getSourceBlocks(root).map((block, index, blocks) => ({
     block,
-    range: getBlockRange(block, sourceLineCount, blocks[index + 1]),
-    count: 0
+    range: getBlockRange(block, sourceLineCount, blocks[index + 1])
   }))
 
   comments.forEach((comment) => {
-    let counted = false
     blockEntries.forEach((entry) => {
       if (!intersectComments([comment], entry.range).length) {
         return
       }
 
       entry.block.classList.add('review-comment-block')
-      if (!counted) {
-        entry.count += 1
-        counted = true
-      }
     })
-  })
-
-  blockEntries.forEach((entry) => {
-    if (entry.count > 0) {
-      entry.block.setAttribute('data-review-comment-count', String(entry.count))
-    }
   })
 }
