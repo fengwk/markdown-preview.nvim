@@ -9,6 +9,10 @@ let applyCommentHandler = null
 let listenersBound = false
 let submitInFlight = false
 let currentSelectionContext = null
+let layoutObserver = null
+let observedMarkdownRoot = null
+let layoutFrameId = null
+let layoutTimeoutIds = []
 
 function toPositiveInteger (value) {
   const number = Number(value)
@@ -68,6 +72,63 @@ function updatePageContainerCommentState (hasComments) {
 
 function getThemeHost () {
   return document.querySelector('main') || getPageContainer() || document.body
+}
+
+function clearDeferredCommentLayouts () {
+  layoutTimeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId))
+  layoutTimeoutIds = []
+}
+
+function cancelScheduledCommentLayout () {
+  if (layoutFrameId !== null) {
+    window.cancelAnimationFrame(layoutFrameId)
+    layoutFrameId = null
+  }
+}
+
+function scheduleCommentLayout () {
+  cancelScheduledCommentLayout()
+  layoutFrameId = window.requestAnimationFrame(() => {
+    layoutFrameId = window.requestAnimationFrame(() => {
+      layoutFrameId = null
+      const root = getMarkdownRoot()
+      if (!root || !latestSnapshot || !Array.isArray(latestSnapshot.comments) || latestSnapshot.comments.length === 0) {
+        return
+      }
+
+      renderCommentPanel(normalizeComments(latestSnapshot))
+    })
+  })
+}
+
+function scheduleDeferredCommentLayout () {
+  clearDeferredCommentLayouts()
+  ;[120, 360, 900].forEach((delay) => {
+    const timeoutId = window.setTimeout(() => {
+      scheduleCommentLayout()
+    }, delay)
+    layoutTimeoutIds.push(timeoutId)
+  })
+}
+
+function bindCommentLayoutObserver(root) {
+  if (!root) {
+    return
+  }
+
+  if (observedMarkdownRoot === root && layoutObserver) {
+    return
+  }
+
+  if (layoutObserver) {
+    layoutObserver.disconnect()
+  }
+
+  observedMarkdownRoot = root
+  layoutObserver = new ResizeObserver(() => {
+    scheduleCommentLayout()
+  })
+  layoutObserver.observe(root)
 }
 
 function ensureCommentModal () {
@@ -342,7 +403,6 @@ function intersectComments (comments, range) {
 function clearReviewCommentMarks (root) {
   getSourceBlocks(root).forEach((block) => {
     block.classList.remove('review-comment-block')
-    block.removeAttribute('data-review-comment-count')
   })
 }
 
@@ -794,10 +854,14 @@ export function renderReviewComments ({ snapshot, sourceLineCount, onApplyCommen
   applyCommentHandler = onApplyComment || null
 
   bindReviewCommentListeners()
+  bindCommentLayoutObserver(root)
   clearReviewCommentMarks(root)
+  clearDeferredCommentLayouts()
 
   const comments = normalizeComments(snapshot)
   renderCommentPanel(comments)
+  scheduleCommentLayout()
+  scheduleDeferredCommentLayout()
 
   if (comments.length === 0) {
     return

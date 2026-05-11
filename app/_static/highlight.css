@@ -1,54 +1,23 @@
-/*
- * GitHub-like highlight theme with light/dark variants.
- * Base colors aligned with github-markdown-css and highlight.js token names.
- */
-
-:root {
-  --hljs-fg: #1f2328;
-  --hljs-bg: #f6f8fa;
-  --hljs-comment: #59636e;
-  --hljs-constant: #0550ae;
-  --hljs-string: #0a3069;
-  --hljs-title: #8250df;
-  --hljs-keyword: #cf222e;
-  --hljs-meta: #59636e;
-  --hljs-insert: #116329;
-  --hljs-delete-bg: #ffebe9;
-  --hljs-add-bg: #dafbe1;
-}
-
-[data-theme="dark"] {
-  --hljs-fg: #c9d1d9;
-  --hljs-bg: #161b22;
-  --hljs-comment: #8b949e;
-  --hljs-constant: #79c0ff;
-  --hljs-string: #a5d6ff;
-  --hljs-title: #d2a8ff;
-  --hljs-keyword: #ff7b72;
-  --hljs-meta: #8b949e;
-  --hljs-insert: #7ee787;
-  --hljs-delete-bg: #67060c;
-  --hljs-add-bg: #033a16;
-}
+/* GitHub-like highlight.js theme backed by github-markdown-css tokens. */
 
 .hljs {
   display: block;
   overflow-x: auto;
   padding: 0.5em;
-  color: var(--hljs-fg);
-  background: var(--hljs-bg);
+  color: var(--fgColor-default);
+  background: var(--bgColor-muted);
 }
 
 .hljs-comment,
 .hljs-quote {
-  color: var(--hljs-comment);
+  color: var(--color-prettylights-syntax-comment);
   font-style: italic;
 }
 
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-subst {
-  color: var(--hljs-keyword);
+  color: var(--color-prettylights-syntax-keyword);
   font-weight: 600;
 }
 
@@ -62,13 +31,13 @@
 .hljs-link,
 .hljs-built_in,
 .hljs-builtin-name {
-  color: var(--hljs-constant);
+  color: var(--color-prettylights-syntax-constant);
 }
 
 .hljs-string,
 .hljs-doctag,
 .hljs-regexp {
-  color: var(--hljs-string);
+  color: var(--color-prettylights-syntax-string);
 }
 
 .hljs-title,
@@ -76,7 +45,7 @@
 .hljs-selector-id,
 .hljs-type,
 .hljs-class .hljs-title {
-  color: var(--hljs-title);
+  color: var(--color-prettylights-syntax-entity);
   font-weight: 600;
 }
 
@@ -84,16 +53,17 @@
 .hljs-name,
 .hljs-attribute,
 .hljs-meta {
-  color: var(--hljs-meta);
+  color: var(--color-prettylights-syntax-storage-modifier-import);
 }
 
 .hljs-deletion {
-  background: var(--hljs-delete-bg);
+  background: var(--color-prettylights-syntax-markup-deleted-bg);
+  color: var(--color-prettylights-syntax-markup-deleted-text);
 }
 
 .hljs-addition {
-  background: var(--hljs-add-bg);
-  color: var(--hljs-insert);
+  background: var(--color-prettylights-syntax-markup-inserted-bg);
+  color: var(--color-prettylights-syntax-markup-inserted-text);
 }
 
 .hljs-emphasis {

@@ -16,7 +16,6 @@ html,body,#__next,main {
   --scrollbar-track-color: rgba(127, 127, 127, 0.12);
   --review-comment-background-color: rgba(255, 196, 0, 0.10);
   --review-comment-border-color: rgba(180, 127, 0, 0.75);
-  --review-comment-panel-background-color: rgba(255, 248, 224, 0.98);
   --review-comment-card-background-color: var(--color-bg-secondary);
   --review-comment-card-border-color: var(--color-border-primary);
   --review-comment-card-shadow-color: rgba(15, 23, 42, 0.08);
@@ -29,16 +28,15 @@ body {
 }
 
 [data-theme="dark"] {
-  --foreground-color: #c9d1d9;
-  --background-color: #0d1117;
-  --border-color: #30363d;
-  --secondary-background-color: #181a1b;
-  --scrollbar-thumb-color: rgba(110, 118, 129, 0.65);
-  --scrollbar-thumb-hover-color: rgba(139, 148, 158, 0.9);
-  --scrollbar-track-color: rgba(48, 54, 61, 0.5);
+  --foreground-color: var(--fgColor-default);
+  --background-color: var(--bgColor-default);
+  --border-color: var(--borderColor-default);
+  --secondary-background-color: var(--bgColor-default);
+  --scrollbar-thumb-color: rgba(118, 131, 144, 0.7);
+  --scrollbar-thumb-hover-color: rgba(145, 152, 161, 0.95);
+  --scrollbar-track-color: rgba(68, 76, 86, 0.45);
   --review-comment-background-color: rgba(210, 153, 34, 0.16);
   --review-comment-border-color: rgba(240, 185, 75, 0.75);
-  --review-comment-panel-background-color: rgba(32, 24, 9, 0.98);
   --review-comment-card-background-color: var(--color-bg-secondary);
   --review-comment-card-border-color: var(--color-border-primary);
   --review-comment-card-shadow-color: rgba(0, 0, 0, 0.32);
