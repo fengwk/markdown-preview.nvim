@@ -1,5 +1,7 @@
 import { attach, Attach, NeovimClient } from '@chemzqm/neovim'
 
+import { getReviewCommentsSnapshot } from '../util/reviewComments'
+
 const logger = require('../util/logger')('attach') // tslint:disable-line
 
 interface IApp {
@@ -37,6 +39,10 @@ export default function(options: Attach): IPlugin {
     const bufnr = opts.bufnr
     const buffers = await nvim.buffers
     const buffer = buffers.find(b => b.id === bufnr)
+    if (!buffer && method === 'refresh_content') {
+      logger.info('skip refresh_content: buffer not found', bufnr)
+      return
+    }
     if (method === 'refresh_content') {
       const winline = await nvim.call('winline')
       const currentWindow = await nvim.window
@@ -48,6 +54,7 @@ export default function(options: Attach): IPlugin {
       const name = await buffer.name
       const content = await buffer.getLines()
       const currentBuffer = await nvim.buffer
+      const reviewComments = await getReviewCommentsSnapshot(nvim, bufnr)
       app.refreshPage({
         bufnr,
         data: {
@@ -59,7 +66,8 @@ export default function(options: Attach): IPlugin {
           pageTitle,
           theme,
           name,
-          content
+          content,
+          reviewComments
         }
       })
     } else if (method === 'close_page') {

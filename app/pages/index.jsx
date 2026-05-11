@@ -21,6 +21,7 @@ import dot, { renderDot } from './dot'
 import blockUml from './blockPlantuml'
 import codeUml from './plantuml'
 import scrollToLine from './scroll'
+import { renderReviewComments } from './review-comments'
 import { meta } from './meta';
 import markdownImSize from './markdown-it-imsize'
 import { escape} from './utils';
@@ -79,8 +80,10 @@ export default class PreviewPage extends React.Component {
     super(props)
 
     this.preContent = ''
+    this.preReviewCommentsSignature = ''
     this.timer = undefined
     this.bufnr = -1;
+    this.reviewComments = { comments: [] }
 
     this.state = {
       name: '',
@@ -95,6 +98,7 @@ export default class PreviewPage extends React.Component {
     this.showThemeButton = this.showThemeButton.bind(this)
     this.hideThemeButton = this.hideThemeButton.bind(this)
     this.handleThemeChange = this.handleThemeChange.bind(this)
+    this.applyReviewComment = this.applyReviewComment.bind(this)
   }
 
   handleThemeChange() {
@@ -109,6 +113,27 @@ export default class PreviewPage extends React.Component {
 
   hideThemeButton() {
     this.setState({ themeModeIsVisible: false })
+  }
+
+  applyReviewComment(action, payload) {
+    const socket = window.socket
+    if (!socket) {
+      return Promise.resolve({
+        ok: false,
+        error: 'Preview socket is disconnected'
+      })
+    }
+
+    return new Promise((resolve) => {
+      socket.once('review_comment_apply_result', resolve)
+      socket.emit('review_comment_apply', {
+        action,
+        payload: {
+          ...payload,
+          revision: this.reviewComments && this.reviewComments.revision
+        }
+      })
+    })
   }
 
   startSocket(bufnr) {
@@ -182,7 +207,8 @@ export default class PreviewPage extends React.Component {
     pageTitle = '',
     theme,
     name = '',
-    content
+    content,
+    reviewComments = { comments: [] }
   }) {
     if (!this.md) {
       const {
@@ -222,7 +248,6 @@ export default class PreviewPage extends React.Component {
         .use(footnote)
         .use(image)
         .use(markdownImSize)
-        .use(linenumbers)
         .use(mkitMermaid)
         .use(chart.chartPlugin)
         .use(diagram, {
@@ -240,6 +265,7 @@ export default class PreviewPage extends React.Component {
           ...DEFAULT_OPTIONS.toc,
           ...toc
         })
+        .use(linenumbers)
     }
 
     // Theme already applied
@@ -258,7 +284,11 @@ export default class PreviewPage extends React.Component {
 
     const newContent = content.join('\n')
     const refreshContent = this.preContent !== newContent
+    const reviewCommentsSignature = JSON.stringify(reviewComments || { comments: [] })
+    const refreshComments = this.preReviewCommentsSignature !== reviewCommentsSignature
     this.preContent = newContent
+    this.preReviewCommentsSignature = reviewCommentsSignature
+    this.reviewComments = reviewComments || { comments: [] }
 
     const refreshScroll = () => {
       if (isActive && !options.disable_sync_scroll) {
@@ -301,6 +331,11 @@ export default class PreviewPage extends React.Component {
           renderFlowchart()
           renderDot()
         }
+        renderReviewComments({
+          snapshot: this.reviewComments,
+          sourceLineCount: content.length,
+          onApplyComment: this.applyReviewComment
+        })
         refreshScroll()
       })
     }
@@ -308,7 +343,7 @@ export default class PreviewPage extends React.Component {
     if (!this.preContent) {
       refreshRender()
     } else {
-      if (!refreshContent) {
+      if (!refreshContent && !refreshComments) {
         refreshScroll()
       } else {
         if (this.timer) {

@@ -7,6 +7,13 @@ html,body,#__next,main {
   --foreground-color: #24292e;
   --background-color: #f6f8fa;
   --border-color: #d1d5da;
+  --review-comment-background-color: rgba(255, 196, 0, 0.10);
+  --review-comment-border-color: rgba(180, 127, 0, 0.75);
+  --review-comment-panel-background-color: rgba(255, 248, 224, 0.98);
+  --review-comment-card-background-color: var(--color-bg-secondary);
+  --review-comment-card-border-color: var(--color-border-primary);
+  --review-comment-card-shadow-color: rgba(15, 23, 42, 0.08);
+  --review-comment-card-muted-color: var(--color-text-tertiary);
 }
 
 body {
@@ -18,6 +25,13 @@ body {
   --background-color: #0d1117;
   --border-color: #30363d;
   --secondary-background-color: #181a1b;
+  --review-comment-background-color: rgba(210, 153, 34, 0.16);
+  --review-comment-border-color: rgba(240, 185, 75, 0.75);
+  --review-comment-panel-background-color: rgba(32, 24, 9, 0.98);
+  --review-comment-card-background-color: var(--color-bg-secondary);
+  --review-comment-card-border-color: var(--color-border-primary);
+  --review-comment-card-shadow-color: rgba(0, 0, 0, 0.32);
+  --review-comment-card-muted-color: var(--color-text-tertiary);
 }
 
 main {
@@ -39,8 +53,11 @@ main {
 }
 
 #page-ctn {
+  position: relative;
   margin: 0 auto;
-  max-width: 900px;
+  max-width: 1200px;
+  padding-right: 304px;
+  box-sizing: border-box;
   color: var(--foreground-color);
 }
 
@@ -73,4 +90,310 @@ main {
   padding-right: 16px;
   font-size: 14px;
   font-weight: 600;
+}
+
+.markdown-body .review-comment-block {
+  box-shadow: inset 3px 0 0 var(--review-comment-border-color);
+  background-color: var(--review-comment-background-color);
+}
+
+.markdown-body .review-comment-block[data-review-comment-count] {
+  position: relative;
+}
+
+.markdown-body .review-comment-block[data-review-comment-count]::after {
+  content: attr(data-review-comment-count);
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--foreground-color);
+  background-color: var(--review-comment-background-color);
+  border: 1px solid var(--review-comment-border-color);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.review-comments-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  width: 280px;
+  min-width: 280px;
+}
+
+.review-comments-panel.review-comments-panel-empty {
+  display: none;
+}
+
+.review-comments-panel-toolbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+.review-comments-toolbar-button {
+  min-height: 36px;
+  padding: 8px 12px;
+  color: var(--foreground-color);
+  font-size: 13px;
+  font-weight: 700;
+  background-color: var(--review-comment-card-background-color);
+  border: 1px solid var(--review-comment-card-border-color);
+  box-shadow: 0 8px 24px var(--review-comment-card-shadow-color);
+  cursor: pointer;
+}
+
+.review-comments-toolbar-button:hover {
+  border-color: var(--review-comment-border-color);
+}
+
+.review-comments-panel-empty-state {
+  padding: 14px 16px;
+  color: var(--review-comment-card-muted-color);
+  font-size: 13px;
+  background-color: var(--review-comment-card-background-color);
+  border: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-card {
+  width: 100%;
+  padding: 0;
+  color: var(--foreground-color);
+  text-align: left;
+  background-color: var(--review-comment-card-background-color);
+  border: 1px solid var(--review-comment-card-border-color);
+  overflow: hidden;
+}
+
+.review-comments-card:hover,
+.review-comments-selection-action:hover {
+  border-color: var(--review-comment-border-color);
+}
+
+.review-comments-card-body {
+  padding: 10px 12px 14px;
+}
+
+.review-comments-card-line {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--review-comment-card-muted-color);
+}
+
+.review-comments-card-label {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--review-comment-card-muted-color);
+}
+
+.review-comments-card-pre {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  color: var(--foreground-color);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--review-comment-card-border-color);
+  overflow: hidden;
+}
+
+.review-comments-card-pre code {
+  display: block;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  background: transparent;
+  border: 0;
+}
+
+.review-comments-card-pre code::before,
+.review-comments-card-pre code::after {
+  content: none;
+}
+
+.review-comments-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-card-action {
+  padding: 10px 12px;
+  color: var(--foreground-color);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  background-color: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.review-comments-card-action + .review-comments-card-action {
+  border-left: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-card-action:hover {
+  background-color: var(--review-comment-background-color);
+}
+
+.review-comments-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgba(0, 0, 0, 0.45);
+}
+
+.review-comments-modal {
+  width: min(560px, calc(100vw - 48px));
+  color: var(--foreground-color);
+  background-color: var(--review-comment-card-background-color);
+  border: 1px solid var(--review-comment-card-border-color);
+  box-shadow: 0 16px 40px var(--review-comment-card-shadow-color);
+}
+
+.review-comments-modal-title {
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-modal-label {
+  display: block;
+  margin: 14px 16px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--review-comment-card-muted-color);
+}
+
+.review-comments-modal-preview,
+.review-comments-modal-textarea,
+.review-comments-modal-message {
+  margin: 0 16px 0;
+  padding: 10px 12px;
+  color: var(--foreground-color);
+  font-size: 13px;
+  line-height: 1.6;
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-modal-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-comments-modal-textarea {
+  display: block;
+  width: calc(100% - 32px);
+  box-sizing: border-box;
+  min-height: 132px;
+  resize: vertical;
+  outline: none;
+}
+
+.review-comments-modal-textarea:focus {
+  border-color: var(--review-comment-border-color);
+}
+
+.review-comments-modal-message {
+  margin-top: 16px;
+  white-space: pre-wrap;
+}
+
+.review-comments-confirm-modal {
+  width: min(420px, calc(100vw - 48px));
+}
+
+.review-comments-confirm-modal .review-comments-modal-message {
+  margin: 16px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.review-comments-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px;
+  border-top: 1px solid var(--review-comment-card-border-color);
+}
+
+.review-comments-modal-button {
+  min-width: 108px;
+  padding: 10px 14px;
+  color: var(--foreground-color);
+  font-size: 13px;
+  font-weight: 600;
+  background-color: transparent;
+  border: 1px solid var(--review-comment-card-border-color);
+  cursor: pointer;
+}
+
+.review-comments-modal-button:hover {
+  border-color: var(--review-comment-border-color);
+}
+
+.review-comments-modal-button-primary {
+  background-color: var(--review-comment-background-color);
+}
+
+.review-comments-selection-action {
+  position: fixed;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--foreground-color);
+  font-size: 13px;
+  font-weight: 700;
+  background-color: var(--review-comment-card-background-color);
+  border: 1px solid var(--review-comment-card-border-color);
+  box-shadow: 0 8px 24px var(--review-comment-card-shadow-color);
+  cursor: pointer;
+  border-radius: 0;
+}
+
+@media (max-width: 1080px) {
+  #page-ctn {
+    max-width: 900px;
+    padding-right: 0;
+  }
+
+  .review-comments-panel {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    margin-top: 20px;
+  }
+
+  .review-comments-card {
+    position: static !important;
+    margin-bottom: 12px;
+  }
 }

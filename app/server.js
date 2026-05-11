@@ -7,6 +7,10 @@ exports.run = function () {
   const opener = require('./lib/util/opener')
   const logger = require('./lib/util/logger')('app/server')
   const { getIP } = require('./lib/util/getIP')
+  const {
+    getReviewCommentsSnapshot,
+    applyReviewCommentsAction
+  } = require('./lib/util/reviewComments')
   const routes = require('./routes')
 
   let clients = {}
@@ -51,6 +55,39 @@ exports.run = function () {
   // websocket server
   const io = websocket(server)
 
+  async function buildClientData (bufnr) {
+    const buffers = await plugin.nvim.buffers
+    const buffer = buffers.find(b => b.id === Number(bufnr))
+    if (!buffer) {
+      return null
+    }
+
+    const winline = await plugin.nvim.call('winline')
+    const currentWindow = await plugin.nvim.window
+    const winheight = await plugin.nvim.call('winheight', currentWindow.id)
+    const cursor = await plugin.nvim.call('getpos', '.')
+    const options = await plugin.nvim.getVar('mkdp_preview_options')
+    const pageTitle = await plugin.nvim.getVar('mkdp_page_title')
+    const theme = await plugin.nvim.getVar('mkdp_theme')
+    const name = await buffer.name
+    const content = await buffer.getLines()
+    const currentBuffer = await plugin.nvim.buffer
+    const reviewComments = await getReviewCommentsSnapshot(plugin.nvim, bufnr)
+
+    return {
+      options,
+      isActive: currentBuffer.id === buffer.id,
+      winline,
+      winheight,
+      cursor,
+      pageTitle,
+      theme,
+      name,
+      content,
+      reviewComments
+    }
+  }
+
   io.on('connection', async (client) => {
     const { handshake = { query: {} } } = client
     const bufnr = handshake.query.bufnr
@@ -62,36 +99,30 @@ exports.run = function () {
     // update vim variable
     update_clients_active_var();
 
-    const buffers = await plugin.nvim.buffers
-    buffers.forEach(async (buffer) => {
-      if (buffer.id === Number(bufnr)) {
-        const winline = await plugin.nvim.call('winline')
-        const currentWindow = await plugin.nvim.window
-        const winheight = await plugin.nvim.call('winheight', currentWindow.id)
-        const cursor = await plugin.nvim.call('getpos', '.')
-        const options = await plugin.nvim.getVar('mkdp_preview_options')
-        const pageTitle = await plugin.nvim.getVar('mkdp_page_title')
-        const theme = await plugin.nvim.getVar('mkdp_theme')
-        const name = await buffer.name
-        const content = await buffer.getLines()
-        const currentBuffer = await plugin.nvim.buffer
-        client.emit('refresh_content', {
-          options,
-          isActive: currentBuffer.id === buffer.id,
-          winline,
-          winheight,
-          cursor,
-          pageTitle,
-          theme,
-          name,
-          content
-        })
+    const data = await buildClientData(bufnr)
+    if (data) {
+      client.emit('refresh_content', data)
+    }
+
+    client.on('review_comment_apply', async function ({ action, payload } = {}) {
+      const result = await applyReviewCommentsAction(plugin.nvim, bufnr, action, payload)
+      client.emit('review_comment_apply_result', result)
+
+      if (result && result.ok) {
+        const nextData = await buildClientData(bufnr)
+        if (nextData) {
+          ;(clients[bufnr] || []).forEach(c => {
+            if (c.connected) {
+              c.emit('refresh_content', nextData)
+            }
+          })
+        }
       }
     })
 
     client.on('disconnect', function () {
       logger.info('disconnect: ', client.id)
-      clients[bufnr] = (clients[bufnr] || []).map(c => c.id !== client.id)
+      clients[bufnr] = (clients[bufnr] || []).filter(c => c.id !== client.id)
       // update vim variable
       update_clients_active_var();
     })

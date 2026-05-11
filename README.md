@@ -242,6 +242,130 @@ let g:mkdp_combine_preview = 0
 " auto refetch combine preview contents when change markdown buffer
 " only when g:mkdp_combine_preview is 1
 let g:mkdp_combine_preview_auto_refresh = 1
+
+" optional review comment integration hooks
+" both values should be Vim function names and default to empty strings
+let g:mkdp_review_comments_snapshot_fn = ''
+let g:mkdp_review_comments_apply_fn = ''
+```
+
+### Review Comment Integration
+
+`markdown-preview.nvim` can render side comments in the browser if you provide two optional Vim hooks:
+
+- `g:mkdp_review_comments_snapshot_fn`
+- `g:mkdp_review_comments_apply_fn`
+
+The preview UI stays disabled until `snapshot_fn` returns at least one comment.
+
+#### Snapshot Hook
+
+The snapshot hook is called with the current `bufnr` and should return:
+
+```vim
+{
+  'revision': 123,
+  'comments': [
+    {
+      'id': 'comment-1',
+      'line': 22,
+      'col': 1,
+      'end_line': 22,
+      'end_col': 9,
+      'origin_text': '## File structure',
+      'selected_text': '## File structure',
+      'comment': 'Heading is too generic.'
+    }
+  ]
+}
+```
+
+Field notes:
+
+- `revision`: buffer revision used for stale-write protection (for example `changedtick`)
+- `origin_text`: stable anchor text used by your provider for re-location
+- `selected_text`: exact text chosen by the user, used by preview cards and copy/export output
+- `end_col`: 1-based exclusive column
+
+#### Apply Hook
+
+The apply hook is called with `(bufnr, action, payload)`.
+
+Supported actions used by the built-in preview UI:
+
+- `create`
+- `edit`
+- `delete`
+- `copy`
+- `copy_and_clear`
+
+`create` payload:
+
+```vim
+{
+  'kind': 'block',
+  'start_line': 24,
+  'end_line': 69,
+  'selected_text': 'lazy.nvim bootstrap and setup',
+  'comment': 'Please split this section.',
+  'revision': 123
+}
+```
+
+`edit` / `delete` payload:
+
+```vim
+{
+  'id': 'comment-1',
+  'comment': 'Updated comment text',
+  'revision': 123
+}
+```
+
+Notes:
+
+- `comment` is required for `edit`
+- `delete`, `copy`, and `copy_and_clear` only require `id` or `revision` when applicable
+
+Return format:
+
+```vim
+{ 'ok': v:true }
+```
+
+or
+
+```vim
+{ 'ok': v:false, 'error': 'message' }
+```
+
+#### Preview Behavior
+
+When hooks are configured, the browser preview provides:
+
+- inline block highlighting for commented ranges
+- side cards rendered in the same order and structure as exported comments (`Line` / `Selected Text` / `User Comment`)
+- `Add Comment` on browser text selection
+- `Edit` / `Delete` on each comment card
+- top toolbar actions: `Copy` and `CopyAndClear`
+
+The preview currently records browser selections as block comments. To keep re-location stable, providers are expected to keep their own anchor model and may optionally store both `origin_text` and `selected_text`.
+
+#### Minimal Example
+
+```lua
+vim.g.mkdp_review_comments_snapshot_fn = 'MyReviewCommentsSnapshot'
+vim.g.mkdp_review_comments_apply_fn = 'MyReviewCommentsApply'
+
+vim.cmd [[
+  function! MyReviewCommentsSnapshot(bufnr) abort
+    return luaeval("require('my-review-comments').snapshot(_A)", a:bufnr)
+  endfunction
+
+  function! MyReviewCommentsApply(bufnr, action, payload) abort
+    return luaeval("require('my-review-comments').apply(_A[1], _A[2], _A[3])", [a:bufnr, a:action, a:payload])
+  endfunction
+]]
 ```
 
 Mappings:

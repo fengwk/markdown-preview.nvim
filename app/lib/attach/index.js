@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const tslib_1 = require("tslib");
 const neovim_1 = require("@chemzqm/neovim");
+const reviewComments_1 = require("../util/reviewComments");
 const logger = require('../util/logger')('attach'); // tslint:disable-line
 let app;
 function default_1(options) {
@@ -11,6 +12,10 @@ function default_1(options) {
         const bufnr = opts.bufnr;
         const buffers = yield nvim.buffers;
         const buffer = buffers.find(b => b.id === bufnr);
+        if (!buffer && method === 'refresh_content') {
+            logger.info('skip refresh_content: buffer not found', bufnr);
+            return;
+        }
         if (method === 'refresh_content') {
             const winline = yield nvim.call('winline');
             const currentWindow = yield nvim.window;
@@ -22,6 +27,7 @@ function default_1(options) {
             const name = yield buffer.name;
             const content = yield buffer.getLines();
             const currentBuffer = yield nvim.buffer;
+            const reviewComments = yield (0, reviewComments_1.getReviewCommentsSnapshot)(nvim, bufnr);
             app.refreshPage({
                 bufnr,
                 data: {
@@ -33,7 +39,8 @@ function default_1(options) {
                     pageTitle,
                     theme,
                     name,
-                    content
+                    content,
+                    reviewComments
                 }
             });
         }

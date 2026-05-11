@@ -116,6 +116,14 @@ if !exists('g:mkdp_combine_preview_auto_refresh')
   let g:mkdp_combine_preview_auto_refresh = 1
 endif
 
+if !exists('g:mkdp_review_comments_snapshot_fn')
+  let g:mkdp_review_comments_snapshot_fn = ''
+endif
+
+if !exists('g:mkdp_review_comments_apply_fn')
+  let g:mkdp_review_comments_apply_fn = ''
+endif
+
 " if there are any active preview client
 let g:mkdp_clients_active = 0
 
