@@ -84,6 +84,8 @@ export default class PreviewPage extends React.Component {
     this.timer = undefined
     this.bufnr = -1;
     this.reviewComments = { comments: [] }
+    this.suppressInitialScroll = true
+    this.lastScrollCursorKey = null
 
     this.state = {
       name: '',
@@ -100,6 +102,9 @@ export default class PreviewPage extends React.Component {
     this.handleThemeChange = this.handleThemeChange.bind(this)
     this.applyReviewComment = this.applyReviewComment.bind(this)
     this.applyDocumentTheme = this.applyDocumentTheme.bind(this)
+    this.captureViewportState = this.captureViewportState.bind(this)
+    this.restoreViewportState = this.restoreViewportState.bind(this)
+    this.shouldSyncScroll = this.shouldSyncScroll.bind(this)
   }
 
   handleThemeChange() {
@@ -146,6 +151,36 @@ export default class PreviewPage extends React.Component {
     document.body.setAttribute('data-theme', theme)
   }
 
+  captureViewportState() {
+    const pageScroll = document.getElementById('page-scroll')
+    return {
+      top: window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0,
+      left: pageScroll ? pageScroll.scrollLeft : 0
+    }
+  }
+
+  restoreViewportState({ top = 0, left = 0 } = {}) {
+    const pageScroll = document.getElementById('page-scroll')
+    if (pageScroll) {
+      pageScroll.scrollLeft = left
+    }
+    window.scrollTo(window.pageXOffset || 0, top)
+  }
+
+  shouldSyncScroll({ cursor, winline, winheight, options }) {
+    const cursorKey = `${this.bufnr}:${cursor[1]}:${winline}:${winheight}:${options.sync_scroll_type || 'middle'}`
+
+    if (this.suppressInitialScroll) {
+      this.suppressInitialScroll = false
+      this.lastScrollCursorKey = cursorKey
+      return false
+    }
+
+    const cursorMoved = this.lastScrollCursorKey !== cursorKey
+    this.lastScrollCursorKey = cursorKey
+    return cursorMoved
+  }
+
   startSocket(bufnr) {
     if (this.bufnr === bufnr) {
       return;
@@ -188,6 +223,7 @@ export default class PreviewPage extends React.Component {
   }
 
   componentDidMount() {
+    this.suppressInitialScroll = true
     this.startSocket(this.getBufnrFromPathname())
   }
 
@@ -300,14 +336,19 @@ export default class PreviewPage extends React.Component {
     this.preReviewCommentsSignature = reviewCommentsSignature
     this.reviewComments = reviewComments || { comments: [] }
 
+    const shouldSyncScroll = this.shouldSyncScroll({ cursor, winline, winheight, options })
+    const viewportState = this.captureViewportState()
+
     const refreshScroll = () => {
-      if (isActive && !options.disable_sync_scroll) {
+      if (isActive && !options.disable_sync_scroll && shouldSyncScroll) {
         scrollToLine[options.sync_scroll_type || 'middle']({
           cursor: cursor[1],
           winline,
           winheight,
           len: content.length
         })
+      } else {
+        this.restoreViewportState(viewportState)
       }
     }
 
