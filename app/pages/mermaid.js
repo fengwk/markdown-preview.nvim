@@ -7,7 +7,7 @@ const mermaidChart = (code) => {
   try {
     // eslint-disable-next-line
     mermaid.parse(code)
-    return `<div class="mermaid">${escape(code)}</div>`
+    return `<div class="mermaid" data-mermaid-source="${encodeURIComponent(code)}">${escape(code)}</div>`
   } catch ({ str, hash }) {
     return `<pre>${str}</pre>`
   }

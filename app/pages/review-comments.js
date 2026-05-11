@@ -422,6 +422,16 @@ function getCommentAnchor (comment) {
       continue
     }
 
+    const blockStyles = window.getComputedStyle(block)
+    const lineHeight = parseFloat(blockStyles.lineHeight)
+    const paddingTop = parseFloat(blockStyles.paddingTop) || 0
+    if (Number.isFinite(lineHeight) && lineHeight > 0 && block.tagName.toLowerCase() === 'pre') {
+      return {
+        block,
+        top: block.offsetTop + paddingTop + Math.max(0, comment.line - range.startLine) * lineHeight
+      }
+    }
+
     const span = Math.max(range.endLine - range.startLine + 1, 1)
     const offsetRatio = Math.max(0, Math.min(1, (comment.line - range.startLine) / span))
     return {

@@ -26,6 +26,26 @@ import { meta } from './meta';
 import markdownImSize from './markdown-it-imsize'
 import { escape} from './utils';
 
+function rerenderMermaid(theme, options = {}) {
+  const mermaidNodes = Array.from(document.querySelectorAll('.mermaid'))
+  mermaidNodes.forEach((node) => {
+    const source = node.getAttribute('data-mermaid-source')
+    if (!source) {
+      return
+    }
+
+    node.removeAttribute('data-processed')
+    node.innerHTML = escape(decodeURIComponent(source))
+  })
+
+  try {
+    // eslint-disable-next-line
+    mermaid.initialize({ theme: (theme || 'light'), ...options })
+    // eslint-disable-next-line
+    mermaid.init(undefined, mermaidNodes)
+  } catch (e) { }
+}
+
 const anchorSymbol = '<svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg>'
 
 const DEFAULT_OPTIONS = {
@@ -84,6 +104,7 @@ export default class PreviewPage extends React.Component {
     this.timer = undefined
     this.bufnr = -1;
     this.reviewComments = { comments: [] }
+    this.lastMaidOptions = {}
     this.suppressInitialScroll = true
     this.lastScrollCursorKey = null
 
@@ -93,6 +114,7 @@ export default class PreviewPage extends React.Component {
       content: '',
       pageTitle: '',
       theme: '',
+      renderNonce: 0,
       themeModeIsVisible: false,
       contentEditable: false,
       disableFilename: 1
@@ -108,9 +130,36 @@ export default class PreviewPage extends React.Component {
   }
 
   handleThemeChange() {
-    this.setState((state) => ({
-      theme: state.theme === 'light' ? 'dark' : 'light',
-    }))
+    const currentTheme = this.state.theme || (
+      window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+    )
+    const theme = currentTheme === 'dark' ? 'light' : 'dark'
+    const viewportState = this.captureViewportState()
+    this.setState({
+      theme,
+      renderNonce: this.state.renderNonce + 1,
+      ...(this.md && this.preContent
+        ? { content: this.md.render(this.preContent) }
+        : {})
+    }, () => {
+      this.applyDocumentTheme(theme)
+      if (this.md && this.preContent) {
+        rerenderMermaid(this.state.theme || 'light', this.lastMaidOptions)
+
+        chart.render()
+        renderDiagram()
+        renderFlowchart()
+        renderDot()
+        renderReviewComments({
+          snapshot: this.reviewComments,
+          sourceLineCount: this.preContent.split('\n').length,
+          onApplyComment: this.applyReviewComment
+        })
+        this.restoreViewportState(viewportState)
+      }
+    })
   }
 
   showThemeButton() {
@@ -149,6 +198,10 @@ export default class PreviewPage extends React.Component {
 
     document.documentElement.setAttribute('data-theme', theme)
     document.body.setAttribute('data-theme', theme)
+    const main = document.querySelector('main')
+    if (main) {
+      main.setAttribute('data-theme', theme)
+    }
   }
 
   captureViewportState() {
@@ -227,6 +280,12 @@ export default class PreviewPage extends React.Component {
     this.startSocket(this.getBufnrFromPathname())
   }
 
+  componentDidUpdate(prevProps, prevState) {
+    if (prevState.theme !== this.state.theme) {
+      this.applyDocumentTheme(this.state.theme)
+    }
+  }
+
   onConnect() {
     console.log('connect success')
   }
@@ -266,6 +325,7 @@ export default class PreviewPage extends React.Component {
         flowchart_diagrams: flowchartDiagrams = {},
         toc = {}
       } = options
+      this.lastMaidOptions = options.maid || {}
       // markdown-it
       this.md = new MarkdownIt({
         ...DEFAULT_OPTIONS.mkit,
@@ -330,6 +390,7 @@ export default class PreviewPage extends React.Component {
 
     const newContent = content.join('\n')
     const refreshContent = this.preContent !== newContent
+    const refreshTheme = Boolean(this.state.theme) && this.state.theme !== theme
     const reviewCommentsSignature = JSON.stringify(reviewComments || { comments: [] })
     const refreshComments = this.preReviewCommentsSignature !== reviewCommentsSignature
     this.preContent = newContent
@@ -360,23 +421,19 @@ export default class PreviewPage extends React.Component {
           return tokens.length > 1 ? tokens.slice(0, -1).join('.') : tokens[0];
         })(name),
         ...(
-          refreshContent
+          (refreshContent || refreshTheme)
           ? { content: this.md.render(newContent) }
           : {}
         ),
         pageTitle,
         theme,
+        renderNonce: this.state.renderNonce,
         contentEditable: options.content_editable,
         disableFilename: options.disable_filename
       }, () => {
         this.applyDocumentTheme(theme)
-        if (refreshContent) {
-          try {
-            // eslint-disable-next-line
-            mermaid.initialize({ theme: (this.state.theme || 'light'), ...(options.maid || {}) })
-            // eslint-disable-next-line
-            mermaid.init(undefined, document.querySelectorAll('.mermaid'))
-          } catch (e) { }
+        if (refreshContent || refreshTheme) {
+          rerenderMermaid(this.state.theme || 'light', options.maid || {})
 
           chart.render()
           renderDiagram()
@@ -395,7 +452,7 @@ export default class PreviewPage extends React.Component {
     if (!this.preContent) {
       refreshRender()
     } else {
-      if (!refreshContent && !refreshComments) {
+      if (!refreshContent && !refreshComments && !refreshTheme) {
         refreshScroll()
       } else {
         if (this.timer) {
@@ -417,6 +474,7 @@ export default class PreviewPage extends React.Component {
       themeModeIsVisible,
       contentEditable,
       disableFilename,
+      renderNonce,
     } = this.state
 
     return (
@@ -468,7 +526,7 @@ export default class PreviewPage extends React.Component {
                     {name}
                   </h3>
                   {themeModeIsVisible && (
-                    <label id="toggle-theme" for="theme">
+                    <label id="toggle-theme" htmlFor="theme">
                       <input
                         id="theme"
                         type="checkbox"
@@ -481,6 +539,7 @@ export default class PreviewPage extends React.Component {
                 </header>
               }
               <section
+                key={`markdown-${renderNonce}`}
                 className="markdown-body"
                 dangerouslySetInnerHTML={{
                   __html: content

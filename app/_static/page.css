@@ -11,6 +11,9 @@ html,body,#__next,main {
   --review-comments-panel-width: 288px;
   --review-comments-panel-gap: 12px;
   --page-side-padding: max(24px, calc((100vw - var(--markdown-content-width)) / 2));
+  --scrollbar-thumb-color: rgba(99, 110, 123, 0.55);
+  --scrollbar-thumb-hover-color: rgba(99, 110, 123, 0.75);
+  --scrollbar-track-color: rgba(127, 127, 127, 0.12);
   --review-comment-background-color: rgba(255, 196, 0, 0.10);
   --review-comment-border-color: rgba(180, 127, 0, 0.75);
   --review-comment-panel-background-color: rgba(255, 248, 224, 0.98);
@@ -30,6 +33,9 @@ body {
   --background-color: #0d1117;
   --border-color: #30363d;
   --secondary-background-color: #181a1b;
+  --scrollbar-thumb-color: rgba(110, 118, 129, 0.65);
+  --scrollbar-thumb-hover-color: rgba(139, 148, 158, 0.9);
+  --scrollbar-track-color: rgba(48, 54, 61, 0.5);
   --review-comment-background-color: rgba(210, 153, 34, 0.16);
   --review-comment-border-color: rgba(240, 185, 75, 0.75);
   --review-comment-panel-background-color: rgba(32, 24, 9, 0.98);
@@ -41,6 +47,77 @@ body {
 
 main {
   background-color: var(--secondary-background-color);
+}
+
+html,
+body,
+main,
+#page-scroll,
+.review-comments-panel,
+.markdown-body pre,
+.markdown-body table,
+.review-comments-card-pre,
+.review-comments-modal-preview,
+.review-comments-modal-textarea {
+  scrollbar-width: auto;
+  scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+main::-webkit-scrollbar,
+#page-scroll::-webkit-scrollbar,
+.review-comments-panel::-webkit-scrollbar,
+.markdown-body pre::-webkit-scrollbar,
+.markdown-body table::-webkit-scrollbar,
+.review-comments-card-pre::-webkit-scrollbar,
+.review-comments-modal-preview::-webkit-scrollbar,
+.review-comments-modal-textarea::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+main::-webkit-scrollbar-track,
+#page-scroll::-webkit-scrollbar-track,
+.review-comments-panel::-webkit-scrollbar-track,
+.markdown-body pre::-webkit-scrollbar-track,
+.markdown-body table::-webkit-scrollbar-track,
+.review-comments-card-pre::-webkit-scrollbar-track,
+.review-comments-modal-preview::-webkit-scrollbar-track,
+.review-comments-modal-textarea::-webkit-scrollbar-track {
+  background: var(--scrollbar-track-color);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+main::-webkit-scrollbar-thumb,
+#page-scroll::-webkit-scrollbar-thumb,
+.review-comments-panel::-webkit-scrollbar-thumb,
+.markdown-body pre::-webkit-scrollbar-thumb,
+.markdown-body table::-webkit-scrollbar-thumb,
+.review-comments-card-pre::-webkit-scrollbar-thumb,
+.review-comments-modal-preview::-webkit-scrollbar-thumb,
+.review-comments-modal-textarea::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-color);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+main::-webkit-scrollbar-thumb:hover,
+#page-scroll::-webkit-scrollbar-thumb:hover,
+.review-comments-panel::-webkit-scrollbar-thumb:hover,
+.markdown-body pre::-webkit-scrollbar-thumb:hover,
+.markdown-body table::-webkit-scrollbar-thumb:hover,
+.review-comments-card-pre::-webkit-scrollbar-thumb:hover,
+.review-comments-modal-preview::-webkit-scrollbar-thumb:hover,
+.review-comments-modal-textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover-color);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 #page-scroll {
