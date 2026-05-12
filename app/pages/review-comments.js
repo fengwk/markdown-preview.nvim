@@ -396,8 +396,40 @@ function getBlockRange (block, sourceLineCount, nextBlock) {
   }
 }
 
-function intersectComments (comments, range) {
-  return comments.filter((comment) => comment.line <= range.endLine && comment.endLine >= range.startLine)
+function intersectsCommentRange (comment, range) {
+  return comment.line <= range.endLine && comment.endLine >= range.startLine
+}
+
+function isRangeContainedBy (innerRange, outerRange) {
+  return innerRange.startLine >= outerRange.startLine && innerRange.endLine <= outerRange.endLine
+}
+
+function getRangeSpan (range) {
+  return Math.max(range.endLine - range.startLine, 0)
+}
+
+function getMinimalCommentBlockEntries (comment, blockEntries) {
+  const candidates = blockEntries.filter((entry) => intersectsCommentRange(comment, entry.range))
+
+  return candidates.filter((candidate) => {
+    return !candidates.some((other) => {
+      if (other === candidate) {
+        return false
+      }
+
+      if (!isRangeContainedBy(other.range, candidate.range)) {
+        return false
+      }
+
+      const candidateSpan = getRangeSpan(candidate.range)
+      const otherSpan = getRangeSpan(other.range)
+      if (otherSpan < candidateSpan) {
+        return true
+      }
+
+      return otherSpan === candidateSpan && candidate.block.contains(other.block)
+    })
+  })
 }
 
 function clearReviewCommentMarks (root) {
@@ -873,11 +905,7 @@ export function renderReviewComments ({ snapshot, sourceLineCount, onApplyCommen
   }))
 
   comments.forEach((comment) => {
-    blockEntries.forEach((entry) => {
-      if (!intersectComments([comment], entry.range).length) {
-        return
-      }
-
+    getMinimalCommentBlockEntries(comment, blockEntries).forEach((entry) => {
       entry.block.classList.add('review-comment-block')
     })
   })
