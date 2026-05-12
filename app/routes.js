@@ -8,6 +8,43 @@ const use = function (route) {
   routes.unshift((req, res, next) => () => route(req, res, next))
 }
 
+// /page-link/:number?href=...
+use(async (req, res, next) => {
+  if (/^\/page-link\/\d+$/.test(req.asPath)) {
+    const sourceBufnr = Number(req.asPath.split('/').pop())
+    const requestUrl = new URL(req.url, 'http://localhost')
+    const href = requestUrl.searchParams.get('href') || ''
+
+    if (!req.resolvePreviewMarkdownLink || !href) {
+      res.statusCode = 400
+      res.setHeader('content-type', 'text/plain; charset=utf-8')
+      res.end('Invalid preview markdown link request')
+      return
+    }
+
+    const result = await req.resolvePreviewMarkdownLink({ bufnr: sourceBufnr, href })
+    if (result && result.ok) {
+      res.statusCode = 302
+      res.setHeader('location', `/page/${result.bufnr}${result.hash || ''}`)
+      res.end()
+      return
+    }
+
+    if (result && result.kind === 'external' && result.href) {
+      res.statusCode = 302
+      res.setHeader('location', result.href)
+      res.end()
+      return
+    }
+
+    res.statusCode = result && /not found/i.test(result.error || '') ? 404 : 400
+    res.setHeader('content-type', 'text/plain; charset=utf-8')
+    res.end((result && result.error) || 'Failed to resolve preview markdown link')
+    return
+  }
+  next()
+})
+
 // /page/:number
 use((req, res, next) => {
   if (/\/page\/\d+/.test(req.asPath)) {

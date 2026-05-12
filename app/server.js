@@ -136,6 +136,20 @@ exports.run = function () {
     }
   }
 
+  async function openMarkdownLinkTargetFromBuffer ({ bufnr, href }) {
+    const buffers = await plugin.nvim.buffers
+    const buffer = buffers.find(b => b.id === Number(bufnr))
+    if (!buffer) {
+      return {
+        ok: false,
+        error: `Preview source buffer not found: ${bufnr}`
+      }
+    }
+
+    const currentFilePath = await buffer.name
+    return openMarkdownLinkTarget({ currentFilePath, href })
+  }
+
   const openUrl = (url, browser) => {
     const handler = opener(url, browser)
     handler.on('error', (err) => {
@@ -169,6 +183,7 @@ exports.run = function () {
     req.mkcss = await plugin.nvim.getVar('mkdp_markdown_css')
     req.hicss = await plugin.nvim.getVar('mkdp_highlight_css')
     req.custImgPath = await plugin.nvim.getVar('mkdp_images_path')
+    req.resolvePreviewMarkdownLink = openMarkdownLinkTargetFromBuffer
     // routes
     routes(req, res)
   })

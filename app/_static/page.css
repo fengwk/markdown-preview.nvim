@@ -287,13 +287,12 @@ main::-webkit-scrollbar-thumb:hover,
 }
 
 .review-comments-panel-toolbar {
-  position: absolute;
-  top: 0;
-  right: 0;
+  position: fixed;
+  top: var(--floating-panel-viewport-offset);
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  width: 100%;
+  z-index: 9;
 }
 
 .review-comments-toolbar-button {

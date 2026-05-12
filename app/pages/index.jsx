@@ -91,6 +91,11 @@ function buildPreviewUrl (bufnr, hash = '') {
   return `/page/${bufnr}${normalizedHash}`
 }
 
+function buildPreviewLinkResolverUrl (bufnr, href = '') {
+  const params = new URLSearchParams({ href })
+  return `/page-link/${bufnr}?${params.toString()}`
+}
+
 function buildOutlineItemsFromHtml (html = '') {
   if (typeof window === 'undefined' || !html) {
     return []
@@ -239,6 +244,7 @@ export default class PreviewPage extends React.Component {
         renderDiagram()
         renderFlowchart()
         renderDot()
+        this.prepareMarkdownLinks()
         renderReviewComments({
           snapshot: this.reviewComments,
           sourceLineCount: this.preContent.split('\n').length,
@@ -289,6 +295,27 @@ export default class PreviewPage extends React.Component {
     if (main) {
       main.setAttribute('data-theme', theme)
     }
+  }
+
+  prepareMarkdownLinks() {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const markdownRoot = document.querySelector('.markdown-body')
+    if (!markdownRoot) {
+      return
+    }
+
+    markdownRoot.querySelectorAll('a[href]').forEach((link) => {
+      const originalHref = link.getAttribute('data-preview-markdown-href') || link.getAttribute('href') || ''
+      if (!shouldHandleLocalMarkdownHref(originalHref)) {
+        return
+      }
+
+      link.setAttribute('data-preview-markdown-href', originalHref)
+      link.setAttribute('href', buildPreviewLinkResolverUrl(this.bufnr, originalHref))
+    })
   }
 
   captureViewportState() {
@@ -595,7 +622,7 @@ export default class PreviewPage extends React.Component {
       return
     }
 
-    const href = link.getAttribute('href') || ''
+    const href = link.getAttribute('data-preview-markdown-href') || link.getAttribute('href') || ''
     if (!shouldHandleLocalMarkdownHref(href)) {
       return
     }
@@ -757,6 +784,7 @@ export default class PreviewPage extends React.Component {
           renderFlowchart()
           renderDot()
         }
+        this.prepareMarkdownLinks()
         renderReviewComments({
           snapshot: this.reviewComments,
           sourceLineCount: content.length,

@@ -13,6 +13,7 @@ let layoutObserver = null
 let observedMarkdownRoot = null
 let layoutFrameId = null
 let layoutTimeoutIds = []
+let toolbarFrameId = null
 
 function toPositiveInteger (value) {
   const number = Number(value)
@@ -129,6 +130,42 @@ function bindCommentLayoutObserver(root) {
     scheduleCommentLayout()
   })
   layoutObserver.observe(root)
+}
+
+function getToolbarElement () {
+  const panel = document.getElementById(PANEL_ID)
+  return panel ? panel.querySelector('.review-comments-panel-toolbar') : null
+}
+
+function cancelToolbarPositionSync () {
+  if (toolbarFrameId !== null) {
+    window.cancelAnimationFrame(toolbarFrameId)
+    toolbarFrameId = null
+  }
+}
+
+function syncToolbarPosition () {
+  toolbarFrameId = null
+
+  const panel = document.getElementById(PANEL_ID)
+  const toolbar = getToolbarElement()
+  if (!panel || !toolbar || panel.classList.contains('review-comments-panel-empty')) {
+    return
+  }
+
+  const panelRect = panel.getBoundingClientRect()
+  toolbar.style.left = `${Math.max(12, panelRect.left)}px`
+  toolbar.style.width = `${panelRect.width}px`
+}
+
+function scheduleToolbarPositionSync () {
+  if (toolbarFrameId !== null) {
+    return
+  }
+
+  toolbarFrameId = window.requestAnimationFrame(() => {
+    syncToolbarPosition()
+  })
 }
 
 function ensureCommentModal () {
@@ -671,6 +708,7 @@ function renderCommentPanel (comments) {
   if (comments.length === 0) {
     panel.classList.add('review-comments-panel-empty')
     updatePageContainerCommentState(false)
+    cancelToolbarPositionSync()
     return
   }
 
@@ -680,6 +718,7 @@ function renderCommentPanel (comments) {
   const toolbar = createPanelToolbar()
   panel.appendChild(toolbar)
   const toolbarHeight = toolbar.offsetHeight + 12
+  scheduleToolbarPositionSync()
 
   const anchoredComments = comments
     .map((comment) => ({ comment, anchor: getCommentAnchor(comment) }))
@@ -712,6 +751,7 @@ function renderCommentPanel (comments) {
   const container = getPageContainer()
   const containerHeight = container ? container.offsetHeight : 0
   panel.style.height = `${Math.max(containerHeight, currentTop)}px`
+  scheduleToolbarPositionSync()
 }
 
 function getElementNode (node) {
@@ -872,7 +912,13 @@ function bindReviewCommentListeners () {
     if (button) {
       button.style.display = 'none'
     }
+
+    scheduleToolbarPositionSync()
   }, true)
+
+  window.addEventListener('resize', () => {
+    scheduleToolbarPositionSync()
+  })
 }
 
 export function renderReviewComments ({ snapshot, sourceLineCount, onApplyComment }) {
