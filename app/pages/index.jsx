@@ -86,6 +86,11 @@ function getClosestAnchorElement (target) {
   return element.closest('a')
 }
 
+function buildPreviewUrl (bufnr, hash = '') {
+  const normalizedHash = hash || ''
+  return `/page/${bufnr}${normalizedHash}`
+}
+
 const DEFAULT_OPTIONS = {
   mkit: {
     // Enable HTML tags in source
@@ -171,6 +176,7 @@ export default class PreviewPage extends React.Component {
     this.shouldSyncScroll = this.shouldSyncScroll.bind(this)
     this.openMarkdownLink = this.openMarkdownLink.bind(this)
     this.handleDocumentClick = this.handleDocumentClick.bind(this)
+    this.handlePopState = this.handlePopState.bind(this)
   }
 
   handleThemeChange() {
@@ -301,7 +307,12 @@ export default class PreviewPage extends React.Component {
     return cursorMoved
   }
 
-  startSocket(bufnr) {
+  startSocket(bufnr, options = {}) {
+    const {
+      historyMode = 'replace',
+      hash = window.location.hash || ''
+    } = options
+
     if (this.bufnr === bufnr) {
       return;
     }
@@ -310,7 +321,11 @@ export default class PreviewPage extends React.Component {
     // Close the previous socket
     const tmpSocket = window.socket
 
-    window.history.replaceState(null, '', `/page/${bufnr}`)
+    if (historyMode === 'push') {
+      window.history.pushState({ bufnr }, '', buildPreviewUrl(bufnr, hash))
+    } else if (historyMode === 'replace') {
+      window.history.replaceState({ bufnr }, '', buildPreviewUrl(bufnr, hash))
+    }
 
     const socket = io({
       query: {
@@ -345,11 +360,17 @@ export default class PreviewPage extends React.Component {
   componentDidMount() {
     this.suppressInitialScroll = true
     document.addEventListener('click', this.handleDocumentClick)
-    this.startSocket(this.getBufnrFromPathname())
+    window.addEventListener('popstate', this.handlePopState)
+    this.pendingAnchorHash = window.location.hash || ''
+    this.startSocket(this.getBufnrFromPathname(), {
+      historyMode: 'replace',
+      hash: window.location.hash || ''
+    })
   }
 
   componentWillUnmount() {
     document.removeEventListener('click', this.handleDocumentClick)
+    window.removeEventListener('popstate', this.handlePopState)
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -372,7 +393,26 @@ export default class PreviewPage extends React.Component {
   }
 
   onChangeBufnr(bufnr) {
-    this.startSocket(bufnr)
+    this.startSocket(bufnr, {
+      historyMode: 'replace'
+    })
+  }
+
+  handlePopState() {
+    const nextBufnr = this.getBufnrFromPathname()
+    this.pendingAnchorHash = window.location.hash || ''
+
+    if (Number(nextBufnr) === Number(this.bufnr)) {
+      if (!this.restorePendingAnchor()) {
+        this.restoreViewportState({ top: 0, left: 0 })
+      }
+      return
+    }
+
+    this.pendingNavigation = true
+    this.startSocket(nextBufnr, {
+      historyMode: 'none'
+    })
   }
 
   async openMarkdownLink(href) {
@@ -404,6 +444,7 @@ export default class PreviewPage extends React.Component {
     this.pendingNavigation = true
 
     if (Number(result.bufnr) === Number(this.bufnr)) {
+      window.history.pushState({ bufnr: this.bufnr }, '', buildPreviewUrl(this.bufnr, this.pendingAnchorHash))
       this.pendingNavigation = false
       if (!this.restorePendingAnchor()) {
         this.restoreViewportState({ top: 0, left: 0 })
@@ -411,7 +452,10 @@ export default class PreviewPage extends React.Component {
       return
     }
 
-    this.startSocket(result.bufnr)
+    this.startSocket(result.bufnr, {
+      historyMode: 'push',
+      hash: result.hash || ''
+    })
   }
 
   handleDocumentClick(event) {
