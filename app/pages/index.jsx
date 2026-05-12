@@ -91,6 +91,35 @@ function buildPreviewUrl (bufnr, hash = '') {
   return `/page/${bufnr}${normalizedHash}`
 }
 
+function buildOutlineItemsFromHtml (html = '') {
+  if (typeof window === 'undefined' || !html) {
+    return []
+  }
+
+  const parser = new window.DOMParser()
+  const doc = parser.parseFromString(`<div id="preview-outline-root">${html}</div>`, 'text/html')
+  const root = doc.getElementById('preview-outline-root')
+  if (!root) {
+    return []
+  }
+
+  return Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+    .map((heading) => {
+      const id = heading.getAttribute('id') || ''
+      const level = Number(heading.tagName.slice(1))
+      const clone = heading.cloneNode(true)
+      clone.querySelectorAll('.anchor').forEach((anchor) => anchor.remove())
+      const text = (clone.textContent || '').replace(/\s+/g, ' ').trim()
+
+      return {
+        id,
+        level,
+        text
+      }
+    })
+    .filter((item) => item.id && item.text)
+}
+
 const DEFAULT_OPTIONS = {
   mkit: {
     // Enable HTML tags in source
@@ -163,8 +192,13 @@ export default class PreviewPage extends React.Component {
       renderNonce: 0,
       themeModeIsVisible: false,
       contentEditable: false,
-      disableFilename: 1
+      disableFilename: 1,
+      outlineItems: [],
+      activeOutlineId: ''
     }
+    this.outlinePanelRef = React.createRef()
+    this.outlineScrollerRef = React.createRef()
+    this.outlineSyncFrameId = null
     this.showThemeButton = this.showThemeButton.bind(this)
     this.hideThemeButton = this.hideThemeButton.bind(this)
     this.handleThemeChange = this.handleThemeChange.bind(this)
@@ -177,6 +211,9 @@ export default class PreviewPage extends React.Component {
     this.openMarkdownLink = this.openMarkdownLink.bind(this)
     this.handleDocumentClick = this.handleDocumentClick.bind(this)
     this.handlePopState = this.handlePopState.bind(this)
+    this.handleOutlineClick = this.handleOutlineClick.bind(this)
+    this.syncActiveOutline = this.syncActiveOutline.bind(this)
+    this.scheduleActiveOutlineSync = this.scheduleActiveOutlineSync.bind(this)
   }
 
   handleThemeChange() {
@@ -356,6 +393,8 @@ export default class PreviewPage extends React.Component {
     this.suppressInitialScroll = true
     document.addEventListener('click', this.handleDocumentClick)
     window.addEventListener('popstate', this.handlePopState)
+    window.addEventListener('scroll', this.scheduleActiveOutlineSync, { passive: true })
+    window.addEventListener('resize', this.scheduleActiveOutlineSync)
     this.pendingAnchorHash = window.location.hash || ''
     this.startSocket(this.getBufnrFromPathname(), {
       historyMode: 'replace',
@@ -366,11 +405,25 @@ export default class PreviewPage extends React.Component {
   componentWillUnmount() {
     document.removeEventListener('click', this.handleDocumentClick)
     window.removeEventListener('popstate', this.handlePopState)
+    window.removeEventListener('scroll', this.scheduleActiveOutlineSync)
+    window.removeEventListener('resize', this.scheduleActiveOutlineSync)
+    if (this.outlineSyncFrameId !== null) {
+      window.cancelAnimationFrame(this.outlineSyncFrameId)
+      this.outlineSyncFrameId = null
+    }
   }
 
   componentDidUpdate(prevProps, prevState) {
     if (prevState.theme !== this.state.theme) {
       this.applyDocumentTheme(this.state.theme)
+    }
+
+    if (prevState.activeOutlineId !== this.state.activeOutlineId) {
+      const scroller = this.outlineScrollerRef.current
+      const activeButton = scroller && scroller.querySelector('.preview-outline-link.is-active')
+      if (activeButton && typeof activeButton.scrollIntoView === 'function') {
+        activeButton.scrollIntoView({ block: 'nearest' })
+      }
     }
   }
 
@@ -407,6 +460,73 @@ export default class PreviewPage extends React.Component {
     this.pendingNavigation = true
     this.startSocket(nextBufnr, {
       historyMode: 'none'
+    })
+  }
+
+  handleOutlineClick(item) {
+    if (!item || !item.id) {
+      return
+    }
+
+    const hash = `#${encodeURIComponent(item.id)}`
+    const target = document.getElementById(item.id)
+    if (window.location.hash === hash) {
+      window.history.replaceState({ bufnr: this.bufnr }, '', buildPreviewUrl(this.bufnr, hash))
+    } else {
+      window.history.pushState({ bufnr: this.bufnr }, '', buildPreviewUrl(this.bufnr, hash))
+    }
+
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView()
+    }
+
+    if (this.state.activeOutlineId !== item.id) {
+      this.setState({ activeOutlineId: item.id })
+    }
+  }
+
+  syncActiveOutline() {
+    this.outlineSyncFrameId = null
+
+    const { outlineItems = [], activeOutlineId = '' } = this.state
+    if (!outlineItems.length) {
+      if (activeOutlineId) {
+        this.setState({ activeOutlineId: '' })
+      }
+      return
+    }
+
+    const headings = outlineItems
+      .map((item) => ({ item, element: document.getElementById(item.id) }))
+      .filter(({ element }) => element)
+
+    if (!headings.length) {
+      if (activeOutlineId) {
+        this.setState({ activeOutlineId: '' })
+      }
+      return
+    }
+
+    const activationOffset = 120
+    let nextActiveId = headings[0].item.id
+    headings.forEach(({ item, element }) => {
+      if (element.getBoundingClientRect().top <= activationOffset) {
+        nextActiveId = item.id
+      }
+    })
+
+    if (nextActiveId !== activeOutlineId) {
+      this.setState({ activeOutlineId: nextActiveId })
+    }
+  }
+
+  scheduleActiveOutlineSync() {
+    if (this.outlineSyncFrameId !== null) {
+      return
+    }
+
+    this.outlineSyncFrameId = window.requestAnimationFrame(() => {
+      this.syncActiveOutline()
     })
   }
 
@@ -572,6 +692,10 @@ export default class PreviewPage extends React.Component {
     const newContent = content.join('\n')
     const refreshContent = this.preContent !== newContent
     const refreshTheme = Boolean(this.state.theme) && this.state.theme !== theme
+    const renderedContent = (refreshContent || refreshTheme)
+      ? this.md.render(newContent)
+      : this.state.content
+    const nextOutlineItems = buildOutlineItemsFromHtml(renderedContent)
     const reviewCommentsSignature = JSON.stringify(reviewComments || { comments: [] })
     const refreshComments = this.preReviewCommentsSignature !== reviewCommentsSignature
     this.preContent = newContent
@@ -613,14 +737,16 @@ export default class PreviewPage extends React.Component {
         })(name),
         ...(
           (refreshContent || refreshTheme)
-          ? { content: this.md.render(newContent) }
+          ? { content: renderedContent }
           : {}
         ),
         pageTitle,
         theme,
         renderNonce: this.state.renderNonce,
         contentEditable: options.content_editable,
-        disableFilename: options.disable_filename
+        disableFilename: options.disable_filename,
+        outlineItems: nextOutlineItems,
+        activeOutlineId: nextOutlineItems.length ? (nextOutlineItems.some((item) => item.id === this.state.activeOutlineId) ? this.state.activeOutlineId : nextOutlineItems[0].id) : ''
       }, () => {
         this.applyDocumentTheme(theme)
         if (refreshContent || refreshTheme) {
@@ -636,6 +762,7 @@ export default class PreviewPage extends React.Component {
           sourceLineCount: content.length,
           onApplyComment: this.applyReviewComment
         })
+        this.scheduleActiveOutlineSync()
         refreshScroll()
       })
     }
@@ -666,7 +793,13 @@ export default class PreviewPage extends React.Component {
       contentEditable,
       disableFilename,
       renderNonce,
+      outlineItems,
+      activeOutlineId,
     } = this.state
+
+    const outlineBaseLevel = outlineItems.length
+      ? Math.min(...outlineItems.map((item) => item.level))
+      : 1
 
     return (
       <React.Fragment>
@@ -692,6 +825,30 @@ export default class PreviewPage extends React.Component {
           <script type="text/javascript" src="/_static/full.render.js"></script>
         </Head>
         <main data-theme={this.state.theme}>
+          <aside
+            ref={this.outlinePanelRef}
+            className={`preview-outline-panel${outlineItems.length ? '' : ' preview-outline-panel-hidden'}`}
+            aria-label="Document outline"
+          >
+            <div className="preview-outline-header">Outline</div>
+            <div ref={this.outlineScrollerRef} className="preview-outline-scroller">
+              <ol className="preview-outline-list">
+                {outlineItems.map((item) => (
+                  <li key={item.id} className="preview-outline-item">
+                    <button
+                      type="button"
+                      className={`preview-outline-link${activeOutlineId === item.id ? ' is-active' : ''}`}
+                      style={{ '--outline-depth': `${Math.max(item.level - outlineBaseLevel, 0) * 14}px` }}
+                      onClick={() => this.handleOutlineClick(item)}
+                      title={item.text}
+                    >
+                      <span className="preview-outline-link-text">{item.text}</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </aside>
           <div id="page-scroll">
             <div id="page-ctn" contentEditable={contentEditable ? 'true' : 'false'}>
               { disableFilename == 0 &&
