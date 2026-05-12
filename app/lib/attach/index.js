@@ -5,6 +5,36 @@ const neovim_1 = require("@chemzqm/neovim");
 const reviewComments_1 = require("../util/reviewComments");
 const logger = require('../util/logger')('attach'); // tslint:disable-line
 let app;
+function normalizeMarkdownFiletypes(value) {
+    if (!Array.isArray(value)) {
+        return ['markdown'];
+    }
+    const filetypes = value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+    return filetypes.length ? filetypes : ['markdown'];
+}
+function shouldRenderAsMarkdown(filetype, markdownFiletypes) {
+    return markdownFiletypes.includes(String(filetype || '').trim());
+}
+function getFenceMarker(content) {
+    const matches = content.match(/`+/g) || [];
+    const longest = matches.reduce((max, marker) => Math.max(max, marker.length), 0);
+    return '`'.repeat(Math.max(3, longest + 1));
+}
+function toCodeFenceLanguage(filetype) {
+    const language = String(filetype || '').trim().replace(/[\s`]+/g, '');
+    return language || 'text';
+}
+function buildPreviewContent(lines, filetype, markdownFiletypes) {
+    if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+        return lines;
+    }
+    const content = lines.join('\n');
+    const fence = getFenceMarker(content);
+    const language = toCodeFenceLanguage(filetype);
+    return [`${fence}${language}`, ...lines, fence];
+}
 function default_1(options) {
     const nvim = (0, neovim_1.attach)(options);
     nvim.on('notification', (method, args) => tslib_1.__awaiter(this, void 0, void 0, function* () {
@@ -22,10 +52,12 @@ function default_1(options) {
             const winheight = yield nvim.call('winheight', currentWindow.id);
             const cursor = yield nvim.call('getpos', '.');
             const renderOpts = yield nvim.getVar('mkdp_preview_options');
+            const markdownFiletypes = normalizeMarkdownFiletypes(yield nvim.getVar('mkdp_filetypes'));
             const pageTitle = yield nvim.getVar('mkdp_page_title');
             const theme = yield nvim.getVar('mkdp_theme');
             const name = yield buffer.name;
-            const content = yield buffer.getLines();
+            const filetype = String(yield nvim.call('getbufvar', [bufnr, '&filetype']));
+            const content = buildPreviewContent(yield buffer.getLines(), filetype, markdownFiletypes);
             const currentBuffer = yield nvim.buffer;
             const reviewComments = yield (0, reviewComments_1.getReviewCommentsSnapshot)(nvim, bufnr);
             app.refreshPage({

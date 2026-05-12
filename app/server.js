@@ -19,6 +19,44 @@ exports.run = function () {
 
   const MARKDOWN_FILE_REGEXP = /\.(md|markdown|mdown|mkdn|mkd)$/i
 
+  function normalizeMarkdownFiletypes (value) {
+    if (!Array.isArray(value)) {
+      return ['markdown']
+    }
+
+    const filetypes = value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+
+    return filetypes.length ? filetypes : ['markdown']
+  }
+
+  function shouldRenderAsMarkdown (filetype, markdownFiletypes) {
+    return markdownFiletypes.includes(String(filetype || '').trim())
+  }
+
+  function getFenceMarker (content = '') {
+    const matches = content.match(/`+/g) || []
+    const longest = matches.reduce((max, marker) => Math.max(max, marker.length), 0)
+    return '`'.repeat(Math.max(3, longest + 1))
+  }
+
+  function toCodeFenceLanguage (filetype = '') {
+    const language = String(filetype || '').trim().replace(/[\s`]+/g, '')
+    return language || 'text'
+  }
+
+  function buildPreviewContent (lines, filetype, markdownFiletypes) {
+    if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+      return lines
+    }
+
+    const content = lines.join('\n')
+    const fence = getFenceMarker(content)
+    const language = toCodeFenceLanguage(filetype)
+    return [`${fence}${language}`, ...lines, fence]
+  }
+
   function splitHrefTarget (href = '') {
     const hashIndex = href.indexOf('#')
     const hash = hashIndex >= 0 ? href.slice(hashIndex) : ''
@@ -203,10 +241,12 @@ exports.run = function () {
     const winheight = await plugin.nvim.call('winheight', currentWindow.id)
     const cursor = await plugin.nvim.call('getpos', '.')
     const options = await plugin.nvim.getVar('mkdp_preview_options')
+    const markdownFiletypes = normalizeMarkdownFiletypes(await plugin.nvim.getVar('mkdp_filetypes'))
     const pageTitle = await plugin.nvim.getVar('mkdp_page_title')
     const theme = await plugin.nvim.getVar('mkdp_theme')
     const name = await buffer.name
-    const content = await buffer.getLines()
+    const filetype = String(await plugin.nvim.call('getbufvar', [bufnr, '&filetype']))
+    const content = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
     const currentBuffer = await plugin.nvim.buffer
     const reviewComments = await getReviewCommentsSnapshot(plugin.nvim, bufnr)
 

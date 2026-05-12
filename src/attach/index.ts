@@ -31,6 +31,44 @@ interface IPlugin {
 
 let app: IApp
 
+function normalizeMarkdownFiletypes(value: any): string[] {
+  if (!Array.isArray(value)) {
+    return ['markdown']
+  }
+
+  const filetypes = value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+
+  return filetypes.length ? filetypes : ['markdown']
+}
+
+function shouldRenderAsMarkdown(filetype: string, markdownFiletypes: string[]): boolean {
+  return markdownFiletypes.includes(String(filetype || '').trim())
+}
+
+function getFenceMarker(content: string): string {
+  const matches: string[] = content.match(/`+/g) || []
+  const longest = matches.reduce((max, marker) => Math.max(max, marker.length), 0)
+  return '`'.repeat(Math.max(3, longest + 1))
+}
+
+function toCodeFenceLanguage(filetype: string): string {
+  const language = String(filetype || '').trim().replace(/[\s`]+/g, '')
+  return language || 'text'
+}
+
+function buildPreviewContent(lines: string[], filetype: string, markdownFiletypes: string[]): string[] {
+  if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+    return lines
+  }
+
+  const content = lines.join('\n')
+  const fence = getFenceMarker(content)
+  const language = toCodeFenceLanguage(filetype)
+  return [`${fence}${language}`, ...lines, fence]
+}
+
 export default function(options: Attach): IPlugin {
   const nvim: NeovimClient = attach(options)
 
@@ -49,10 +87,12 @@ export default function(options: Attach): IPlugin {
       const winheight = await nvim.call('winheight', currentWindow.id)
       const cursor = await nvim.call('getpos', '.')
       const renderOpts = await nvim.getVar('mkdp_preview_options')
+      const markdownFiletypes = normalizeMarkdownFiletypes(await nvim.getVar('mkdp_filetypes'))
       const pageTitle = await nvim.getVar('mkdp_page_title')
       const theme = await nvim.getVar('mkdp_theme')
       const name = await buffer.name
-      const content = await buffer.getLines()
+      const filetype = String(await nvim.call('getbufvar', [bufnr, '&filetype']))
+      const content = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
       const currentBuffer = await nvim.buffer
       const reviewComments = await getReviewCommentsSnapshot(nvim, bufnr)
       app.refreshPage({
