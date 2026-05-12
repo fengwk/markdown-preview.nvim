@@ -50,7 +50,6 @@ main {
 html,
 body,
 main,
-#page-scroll,
 .review-comments-panel,
 .markdown-body pre,
 .markdown-body table,
@@ -64,7 +63,6 @@ main,
 html::-webkit-scrollbar,
 body::-webkit-scrollbar,
 main::-webkit-scrollbar,
-#page-scroll::-webkit-scrollbar,
 .review-comments-panel::-webkit-scrollbar,
 .markdown-body pre::-webkit-scrollbar,
 .markdown-body table::-webkit-scrollbar,
@@ -78,7 +76,6 @@ main::-webkit-scrollbar,
 html::-webkit-scrollbar-track,
 body::-webkit-scrollbar-track,
 main::-webkit-scrollbar-track,
-#page-scroll::-webkit-scrollbar-track,
 .review-comments-panel::-webkit-scrollbar-track,
 .markdown-body pre::-webkit-scrollbar-track,
 .markdown-body table::-webkit-scrollbar-track,
@@ -91,7 +88,6 @@ main::-webkit-scrollbar-track,
 html::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb,
 main::-webkit-scrollbar-thumb,
-#page-scroll::-webkit-scrollbar-thumb,
 .review-comments-panel::-webkit-scrollbar-thumb,
 .markdown-body pre::-webkit-scrollbar-thumb,
 .markdown-body table::-webkit-scrollbar-thumb,
@@ -106,7 +102,6 @@ main::-webkit-scrollbar-thumb,
 html::-webkit-scrollbar-thumb:hover,
 body::-webkit-scrollbar-thumb:hover,
 main::-webkit-scrollbar-thumb:hover,
-#page-scroll::-webkit-scrollbar-thumb:hover,
 .review-comments-panel::-webkit-scrollbar-thumb:hover,
 .markdown-body pre::-webkit-scrollbar-thumb:hover,
 .markdown-body table::-webkit-scrollbar-thumb:hover,
@@ -120,9 +115,8 @@ main::-webkit-scrollbar-thumb:hover,
 
 #page-scroll {
   position: relative;
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
+  width: max-content;
+  min-width: 100%;
 }
 
 #toggle-theme {
