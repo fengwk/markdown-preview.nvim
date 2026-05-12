@@ -641,6 +641,7 @@ export default class PreviewPage extends React.Component {
     theme,
     name = '',
     content,
+    wrappedInCodeFence = false,
     reviewComments = { comments: [] }
   }) {
     if (!this.md) {
@@ -788,6 +789,7 @@ export default class PreviewPage extends React.Component {
         renderReviewComments({
           snapshot: this.reviewComments,
           sourceLineCount: content.length,
+          wrappedInCodeFence,
           onApplyComment: this.applyReviewComment
         })
         this.scheduleActiveOutlineSync()

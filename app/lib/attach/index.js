@@ -4,6 +4,7 @@ const tslib_1 = require("tslib");
 const neovim_1 = require("@chemzqm/neovim");
 const reviewComments_1 = require("../util/reviewComments");
 const logger = require('../util/logger')('attach'); // tslint:disable-line
+const MARKDOWN_FILE_REGEXP = /\.(md|markdown|mdown|mkdn|mkd)$/i;
 let app;
 function normalizeMarkdownFiletypes(value) {
     if (!Array.isArray(value)) {
@@ -28,12 +29,41 @@ function toCodeFenceLanguage(filetype) {
 }
 function buildPreviewContent(lines, filetype, markdownFiletypes) {
     if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
-        return lines;
+        return {
+            lines,
+            wrappedInCodeFence: false
+        };
     }
     const content = lines.join('\n');
     const fence = getFenceMarker(content);
     const language = toCodeFenceLanguage(filetype);
-    return [`${fence}${language}`, ...lines, fence];
+    return {
+        lines: [`${fence}${language}`, ...lines, fence],
+        wrappedInCodeFence: true
+    };
+}
+function detectPreviewFiletype(nvim, bufnr, name) {
+    return tslib_1.__awaiter(this, void 0, void 0, function* () {
+        const currentFiletype = String((yield nvim.call('getbufvar', [bufnr, '&filetype'])) || '').trim();
+        if (currentFiletype) {
+            return currentFiletype;
+        }
+        try {
+            const supportsLuaeval = Number(yield nvim.call('exists', ['*luaeval'])) === 1;
+            if (supportsLuaeval) {
+                const matchedFiletype = String((yield nvim.call('luaeval', ['vim.filetype.match({ buf = _A }) or ""', bufnr])) || '').trim();
+                if (matchedFiletype) {
+                    try {
+                        yield nvim.call('setbufvar', [bufnr, '&filetype', matchedFiletype]);
+                    }
+                    catch (e) { }
+                    return matchedFiletype;
+                }
+            }
+        }
+        catch (e) { }
+        return MARKDOWN_FILE_REGEXP.test(String(name || '')) ? 'markdown' : '';
+    });
 }
 function default_1(options) {
     const nvim = (0, neovim_1.attach)(options);
@@ -56,8 +86,8 @@ function default_1(options) {
             const pageTitle = yield nvim.getVar('mkdp_page_title');
             const theme = yield nvim.getVar('mkdp_theme');
             const name = yield buffer.name;
-            const filetype = String(yield nvim.call('getbufvar', [bufnr, '&filetype']));
-            const content = buildPreviewContent(yield buffer.getLines(), filetype, markdownFiletypes);
+            const filetype = yield detectPreviewFiletype(nvim, bufnr, name);
+            const previewContent = buildPreviewContent(yield buffer.getLines(), filetype, markdownFiletypes);
             const currentBuffer = yield nvim.buffer;
             const reviewComments = yield (0, reviewComments_1.getReviewCommentsSnapshot)(nvim, bufnr);
             app.refreshPage({
@@ -71,7 +101,8 @@ function default_1(options) {
                     pageTitle,
                     theme,
                     name,
-                    content,
+                    content: previewContent.lines,
+                    wrappedInCodeFence: previewContent.wrappedInCodeFence,
                     reviewComments
                 }
             });

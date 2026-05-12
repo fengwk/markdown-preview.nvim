@@ -3,6 +3,7 @@ import { attach, Attach, NeovimClient } from '@chemzqm/neovim'
 import { getReviewCommentsSnapshot } from '../util/reviewComments'
 
 const logger = require('../util/logger')('attach') // tslint:disable-line
+const MARKDOWN_FILE_REGEXP = /\.(md|markdown|mdown|mkdn|mkd)$/i
 
 interface IApp {
   refreshPage: ((
@@ -58,15 +59,43 @@ function toCodeFenceLanguage(filetype: string): string {
   return language || 'text'
 }
 
-function buildPreviewContent(lines: string[], filetype: string, markdownFiletypes: string[]): string[] {
+function buildPreviewContent(lines: string[], filetype: string, markdownFiletypes: string[]): { lines: string[], wrappedInCodeFence: boolean } {
   if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
-    return lines
+    return {
+      lines,
+      wrappedInCodeFence: false
+    }
   }
 
   const content = lines.join('\n')
   const fence = getFenceMarker(content)
   const language = toCodeFenceLanguage(filetype)
-  return [`${fence}${language}`, ...lines, fence]
+  return {
+    lines: [`${fence}${language}`, ...lines, fence],
+    wrappedInCodeFence: true
+  }
+}
+
+async function detectPreviewFiletype(nvim: NeovimClient, bufnr: number | string, name: string): Promise<string> {
+  const currentFiletype = String(await nvim.call('getbufvar', [bufnr, '&filetype']) || '').trim()
+  if (currentFiletype) {
+    return currentFiletype
+  }
+
+  try {
+    const supportsLuaeval = Number(await nvim.call('exists', ['*luaeval'])) === 1
+    if (supportsLuaeval) {
+      const matchedFiletype = String(await nvim.call('luaeval', ['vim.filetype.match({ buf = _A }) or ""', bufnr]) || '').trim()
+      if (matchedFiletype) {
+        try {
+          await nvim.call('setbufvar', [bufnr, '&filetype', matchedFiletype])
+        } catch (e) {}
+        return matchedFiletype
+      }
+    }
+  } catch (e) {}
+
+  return MARKDOWN_FILE_REGEXP.test(String(name || '')) ? 'markdown' : ''
 }
 
 export default function(options: Attach): IPlugin {
@@ -91,8 +120,8 @@ export default function(options: Attach): IPlugin {
       const pageTitle = await nvim.getVar('mkdp_page_title')
       const theme = await nvim.getVar('mkdp_theme')
       const name = await buffer.name
-      const filetype = String(await nvim.call('getbufvar', [bufnr, '&filetype']))
-      const content = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
+      const filetype = await detectPreviewFiletype(nvim, bufnr, name)
+      const previewContent = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
       const currentBuffer = await nvim.buffer
       const reviewComments = await getReviewCommentsSnapshot(nvim, bufnr)
       app.refreshPage({
@@ -106,7 +135,8 @@ export default function(options: Attach): IPlugin {
           pageTitle,
           theme,
           name,
-          content,
+          content: previewContent.lines,
+          wrappedInCodeFence: previewContent.wrappedInCodeFence,
           reviewComments
         }
       })

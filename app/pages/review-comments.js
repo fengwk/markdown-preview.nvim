@@ -14,6 +14,7 @@ let observedMarkdownRoot = null
 let layoutFrameId = null
 let layoutTimeoutIds = []
 let toolbarFrameId = null
+let latestWrappedInCodeFence = false
 
 function toPositiveInteger (value) {
   const number = Number(value)
@@ -445,6 +446,197 @@ function getRangeSpan (range) {
   return Math.max(range.endLine - range.startLine, 0)
 }
 
+function isCodeBlock (block) {
+  return Boolean(block && block.tagName && block.tagName.toLowerCase() === 'pre')
+}
+
+function getCodeBlockTextRoot (block) {
+  return isCodeBlock(block) ? (block.querySelector('code') || block) : null
+}
+
+function getBlockTokenType (block) {
+  return String(block && block.getAttribute ? block.getAttribute('data-source-token-type') || '' : '')
+}
+
+function getCodeBlockVisibleRange (block, range) {
+  if (!isCodeBlock(block)) {
+    return range
+  }
+
+  if (latestWrappedInCodeFence) {
+    return {
+      startLine: 1,
+      endLine: Math.max(1, latestSourceLineCount - 2)
+    }
+  }
+
+  if (getBlockTokenType(block) === 'fence') {
+    return {
+      startLine: range.startLine + 1,
+      endLine: Math.max(range.startLine + 1, range.endLine - 1)
+    }
+  }
+
+  return range
+}
+
+function getCodeBlockLineMetrics (block) {
+  if (!isCodeBlock(block)) {
+    return null
+  }
+
+  const blockStyles = window.getComputedStyle(block)
+  const lineHeight = parseFloat(blockStyles.lineHeight)
+  if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+    return null
+  }
+
+  return {
+    lineHeight,
+    paddingTop: parseFloat(blockStyles.paddingTop) || 0
+  }
+}
+
+function getCodeBlockLineStartOffsets (text) {
+  const offsets = [0]
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '\n') {
+      offsets.push(index + 1)
+    }
+  }
+  return offsets
+}
+
+function resolveTextOffsetPosition (root, offset) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null)
+  const textNodes = []
+  let totalLength = 0
+  let currentNode = walker.nextNode()
+  while (currentNode) {
+    const length = currentNode.textContent ? currentNode.textContent.length : 0
+    textNodes.push({ node: currentNode, start: totalLength, end: totalLength + length })
+    totalLength += length
+    currentNode = walker.nextNode()
+  }
+
+  if (!textNodes.length) {
+    return null
+  }
+
+  const clampedOffset = Math.max(0, Math.min(offset, totalLength))
+  const entry = textNodes.find(({ end }) => clampedOffset <= end) || textNodes[textNodes.length - 1]
+  return {
+    node: entry.node,
+    offset: Math.max(0, Math.min(clampedOffset - entry.start, entry.node.textContent.length))
+  }
+}
+
+function getCodeBlockLineRectGroups (block, startLine, endLine, visibleRange) {
+  const codeRoot = getCodeBlockTextRoot(block)
+  if (!codeRoot) {
+    return []
+  }
+
+  const text = codeRoot.textContent || ''
+  const lineStarts = getCodeBlockLineStartOffsets(text)
+  const startIndex = Math.max(startLine - visibleRange.startLine, 0)
+  const endIndex = Math.max(endLine - visibleRange.startLine, startIndex)
+  const startOffset = lineStarts[startIndex]
+  if (!Number.isFinite(startOffset)) {
+    return []
+  }
+
+  const endOffset = endIndex + 1 < lineStarts.length
+    ? Math.max(lineStarts[endIndex + 1] - 1, startOffset)
+    : text.length
+
+  const startPosition = resolveTextOffsetPosition(codeRoot, startOffset)
+  const endPosition = resolveTextOffsetPosition(codeRoot, endOffset)
+  if (!startPosition || !endPosition) {
+    return []
+  }
+
+  const range = document.createRange()
+  range.setStart(startPosition.node, startPosition.offset)
+  range.setEnd(endPosition.node, endPosition.offset)
+
+  const blockRect = block.getBoundingClientRect()
+  const groups = []
+  Array.from(range.getClientRects()).forEach((rect) => {
+    const key = Math.round(rect.top)
+    const existing = groups.find((group) => group.key === key)
+    if (existing) {
+      existing.top = Math.min(existing.top, rect.top)
+      existing.bottom = Math.max(existing.bottom, rect.bottom)
+      return
+    }
+
+    groups.push({
+      key,
+      top: rect.top,
+      bottom: rect.bottom
+    })
+  })
+
+  return groups
+    .sort((left, right) => left.top - right.top)
+    .map(({ top, bottom }) => ({
+      top: top - blockRect.top,
+      height: Math.max(bottom - top, 1)
+    }))
+}
+
+function ensureCodeBlockHighlightLayer (block) {
+  let layer = block.querySelector('.review-comment-code-highlight-layer')
+  if (layer) {
+    return layer
+  }
+
+  layer = document.createElement('div')
+  layer.className = 'review-comment-code-highlight-layer'
+  layer.setAttribute('aria-hidden', 'true')
+  block.appendChild(layer)
+  return layer
+}
+
+function applyCodeBlockLineHighlight (block, range, comment) {
+  const visibleRange = getCodeBlockVisibleRange(block, range)
+  const highlightStartLine = Math.max(comment.line, visibleRange.startLine)
+  const highlightEndLine = Math.min(comment.endLine, visibleRange.endLine)
+  if (highlightStartLine > highlightEndLine) {
+    return
+  }
+
+  const rectGroups = getCodeBlockLineRectGroups(block, highlightStartLine, highlightEndLine, visibleRange)
+  const layer = ensureCodeBlockHighlightLayer(block)
+  if (rectGroups.length) {
+    rectGroups.forEach(({ top, height }) => {
+      const rangeElement = document.createElement('div')
+      rangeElement.className = 'review-comment-code-highlight-range'
+      rangeElement.style.top = `${top}px`
+      rangeElement.style.height = `${height}px`
+      layer.appendChild(rangeElement)
+    })
+    block.classList.add('review-comment-code-block')
+    return
+  }
+
+  const metrics = getCodeBlockLineMetrics(block)
+  if (!metrics) {
+    block.classList.add('review-comment-block')
+    return
+  }
+
+  const lineCount = Math.max(highlightEndLine - highlightStartLine + 1, 1)
+  const relativeStartLine = Math.max(highlightStartLine - visibleRange.startLine, 0)
+  const rangeElement = document.createElement('div')
+  rangeElement.className = 'review-comment-code-highlight-range'
+  rangeElement.style.top = `${metrics.paddingTop + (relativeStartLine * metrics.lineHeight)}px`
+  rangeElement.style.height = `${Math.max(lineCount * metrics.lineHeight, metrics.lineHeight)}px`
+  layer.appendChild(rangeElement)
+  block.classList.add('review-comment-code-block')
+}
+
 function getMinimalCommentBlockEntries (comment, blockEntries) {
   const candidates = blockEntries.filter((entry) => intersectsCommentRange(comment, entry.range))
 
@@ -472,6 +664,11 @@ function getMinimalCommentBlockEntries (comment, blockEntries) {
 function clearReviewCommentMarks (root) {
   getSourceBlocks(root).forEach((block) => {
     block.classList.remove('review-comment-block')
+    block.classList.remove('review-comment-code-block')
+    const layer = block.querySelector('.review-comment-code-highlight-layer')
+    if (layer) {
+      layer.remove()
+    }
   })
 }
 
@@ -547,22 +744,29 @@ function getCommentAnchor (comment) {
   for (let index = 0; index < blocks.length; index += 1) {
     const block = blocks[index]
     const range = getBlockRange(block, latestSourceLineCount, blocks[index + 1])
-    if (comment.line > range.endLine || comment.endLine < range.startLine) {
+    const visibleRange = isCodeBlock(block) ? getCodeBlockVisibleRange(block, range) : range
+    if (comment.line > visibleRange.endLine || comment.endLine < visibleRange.startLine) {
       continue
     }
 
-    const blockStyles = window.getComputedStyle(block)
-    const lineHeight = parseFloat(blockStyles.lineHeight)
-    const paddingTop = parseFloat(blockStyles.paddingTop) || 0
-    if (Number.isFinite(lineHeight) && lineHeight > 0 && block.tagName.toLowerCase() === 'pre') {
+    const rectGroups = getCodeBlockLineRectGroups(block, comment.line, comment.line, visibleRange)
+    if (rectGroups.length) {
       return {
         block,
-        top: block.offsetTop + paddingTop + Math.max(0, comment.line - range.startLine) * lineHeight
+        top: block.offsetTop + rectGroups[0].top
       }
     }
 
-    const span = Math.max(range.endLine - range.startLine + 1, 1)
-    const offsetRatio = Math.max(0, Math.min(1, (comment.line - range.startLine) / span))
+    const metrics = getCodeBlockLineMetrics(block)
+    if (metrics) {
+      return {
+        block,
+        top: block.offsetTop + metrics.paddingTop + Math.max(0, comment.line - visibleRange.startLine) * metrics.lineHeight
+      }
+    }
+
+    const span = Math.max(visibleRange.endLine - visibleRange.startLine + 1, 1)
+    const offsetRatio = Math.max(0, Math.min(1, (comment.line - visibleRange.startLine) / span))
     return {
       block,
       top: block.offsetTop + block.offsetHeight * offsetRatio
@@ -769,6 +973,51 @@ function isNodeWithinRoot (node, root) {
   return Boolean(element && root && root.contains(element))
 }
 
+function getTextOffsetWithinContainer (container, node, offset) {
+  if (!container || !node) {
+    return null
+  }
+
+  const range = document.createRange()
+  range.selectNodeContents(container)
+  range.setEnd(node, offset)
+  return range.toString().length
+}
+
+function countLineBreaksBeforeOffset (text, offset) {
+  return (text.slice(0, Math.max(offset, 0)).match(/\n/g) || []).length
+}
+
+function getCodeBlockSelectionLineRange (block, selectionRange, blockRange) {
+  if (!isCodeBlock(block) || !selectionRange) {
+    return null
+  }
+
+  const codeRoot = block.querySelector('code') || block
+  if (!codeRoot.contains(getElementNode(selectionRange.startContainer)) || !codeRoot.contains(getElementNode(selectionRange.endContainer))) {
+    return null
+  }
+
+  const startOffset = getTextOffsetWithinContainer(codeRoot, selectionRange.startContainer, selectionRange.startOffset)
+  const endOffset = getTextOffsetWithinContainer(codeRoot, selectionRange.endContainer, selectionRange.endOffset)
+  if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset)) {
+    return null
+  }
+
+  const normalizedStartOffset = Math.min(startOffset, endOffset)
+  const normalizedEndOffset = Math.max(startOffset, endOffset)
+  const text = codeRoot.textContent || ''
+  const startLineOffset = countLineBreaksBeforeOffset(text, normalizedStartOffset)
+  const inclusiveEndOffset = Math.max(normalizedEndOffset - 1, normalizedStartOffset)
+  const endLineOffset = countLineBreaksBeforeOffset(text, inclusiveEndOffset)
+
+  const visibleRange = getCodeBlockVisibleRange(block, blockRange)
+  return {
+    startLine: Math.min(visibleRange.startLine + startLineOffset, visibleRange.endLine),
+    endLine: Math.min(visibleRange.startLine + endLineOffset, visibleRange.endLine)
+  }
+}
+
 function getSelectionBlockRange () {
   const root = getMarkdownRoot()
   const selection = window.getSelection()
@@ -789,6 +1038,14 @@ function getSelectionBlockRange () {
 
   const startRange = getBlockRange(startBlock, latestSourceLineCount)
   const endRange = getBlockRange(endBlock, latestSourceLineCount)
+
+  if (startBlock === endBlock) {
+    const codeBlockRange = getCodeBlockSelectionLineRange(startBlock, range, startRange)
+    if (codeBlockRange) {
+      return codeBlockRange
+    }
+  }
+
   return {
     startLine: Math.min(startRange.startLine, endRange.startLine),
     endLine: Math.max(startRange.endLine, endRange.endLine)
@@ -921,7 +1178,7 @@ function bindReviewCommentListeners () {
   })
 }
 
-export function renderReviewComments ({ snapshot, sourceLineCount, onApplyComment }) {
+export function renderReviewComments ({ snapshot, sourceLineCount, wrappedInCodeFence = false, onApplyComment }) {
   const root = getMarkdownRoot()
   if (!root) {
     return
@@ -929,6 +1186,7 @@ export function renderReviewComments ({ snapshot, sourceLineCount, onApplyCommen
 
   latestSnapshot = snapshot || { comments: [] }
   latestSourceLineCount = sourceLineCount || 0
+  latestWrappedInCodeFence = Boolean(wrappedInCodeFence)
   applyCommentHandler = onApplyComment || null
 
   bindReviewCommentListeners()
@@ -952,6 +1210,11 @@ export function renderReviewComments ({ snapshot, sourceLineCount, onApplyCommen
 
   comments.forEach((comment) => {
     getMinimalCommentBlockEntries(comment, blockEntries).forEach((entry) => {
+      if (isCodeBlock(entry.block)) {
+        applyCodeBlockLineHighlight(entry.block, entry.range, comment)
+        return
+      }
+
       entry.block.classList.add('review-comment-block')
     })
   })

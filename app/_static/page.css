@@ -273,6 +273,30 @@ main::-webkit-scrollbar-thumb:hover,
   background-color: var(--review-comment-background-color);
 }
 
+.markdown-body pre.review-comment-code-block {
+  position: relative;
+}
+
+.markdown-body pre.review-comment-code-block > code {
+  position: relative;
+  z-index: 1;
+}
+
+.review-comment-code-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.review-comment-code-highlight-range {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-shadow: inset 3px 0 0 var(--review-comment-border-color);
+  background-color: var(--review-comment-background-color);
+}
+
 .review-comments-panel {
   position: absolute;
   top: 0;

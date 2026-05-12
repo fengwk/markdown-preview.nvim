@@ -22,6 +22,7 @@ export default function injectLinenumbersPlugin (md) {
     token.attrJoin('class', 'source-line')
     token.attrSet('data-source-line', String(map.start))
     token.attrSet('data-source-line-end', String(map.end))
+    token.attrSet('data-source-token-type', String(token.type || ''))
     return token
   }
 
@@ -46,6 +47,9 @@ export default function injectLinenumbersPlugin (md) {
       }
       if (!/\bdata-source-line-end\s*=/.test(nextAttrs)) {
         nextAttrs += ` data-source-line-end="${map.end}"`
+      }
+      if (!/\bdata-source-token-type\s*=/.test(nextAttrs)) {
+        nextAttrs += ` data-source-token-type="${String(token.type || '')}"`
       }
 
       return `<${tagName}${nextAttrs}>`
