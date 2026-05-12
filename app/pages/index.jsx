@@ -48,6 +48,44 @@ function rerenderMermaid(theme, options = {}) {
 
 const anchorSymbol = '<svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg>'
 
+const MARKDOWN_FILE_REGEXP = /\.(md|markdown|mdown|mkdn|mkd)$/i
+
+function splitHrefTarget (href = '') {
+  const hashIndex = href.indexOf('#')
+  const hash = hashIndex >= 0 ? href.slice(hashIndex) : ''
+  const hrefWithoutHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href
+  const queryIndex = hrefWithoutHash.indexOf('?')
+
+  return {
+    pathname: queryIndex >= 0 ? hrefWithoutHash.slice(0, queryIndex) : hrefWithoutHash,
+    hash
+  }
+}
+
+function isExternalHref (href = '') {
+  if (/^[a-zA-Z]:[\\/]/.test(href)) {
+    return false
+  }
+  return /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)
+}
+
+function shouldHandleLocalMarkdownHref (href = '') {
+  if (!href || href[0] === '#' || isExternalHref(href)) {
+    return false
+  }
+
+  const { pathname } = splitHrefTarget(href)
+  return Boolean(pathname) && MARKDOWN_FILE_REGEXP.test(pathname)
+}
+
+function getClosestAnchorElement (target) {
+  const element = target && target.nodeType === Node.TEXT_NODE ? target.parentElement : target
+  if (!element || typeof element.closest !== 'function') {
+    return null
+  }
+  return element.closest('a')
+}
+
 const DEFAULT_OPTIONS = {
   mkit: {
     // Enable HTML tags in source
@@ -107,6 +145,9 @@ export default class PreviewPage extends React.Component {
     this.lastMaidOptions = {}
     this.suppressInitialScroll = true
     this.lastScrollCursorKey = null
+    this.currentFilePath = ''
+    this.pendingAnchorHash = ''
+    this.pendingNavigation = false
 
     this.state = {
       name: '',
@@ -126,7 +167,10 @@ export default class PreviewPage extends React.Component {
     this.applyDocumentTheme = this.applyDocumentTheme.bind(this)
     this.captureViewportState = this.captureViewportState.bind(this)
     this.restoreViewportState = this.restoreViewportState.bind(this)
+    this.restorePendingAnchor = this.restorePendingAnchor.bind(this)
     this.shouldSyncScroll = this.shouldSyncScroll.bind(this)
+    this.openMarkdownLink = this.openMarkdownLink.bind(this)
+    this.handleDocumentClick = this.handleDocumentClick.bind(this)
   }
 
   handleThemeChange() {
@@ -220,6 +264,29 @@ export default class PreviewPage extends React.Component {
     window.scrollTo(window.pageXOffset || 0, top)
   }
 
+  restorePendingAnchor() {
+    const hash = this.pendingAnchorHash
+    if (!hash) {
+      return false
+    }
+
+    this.pendingAnchorHash = ''
+    window.requestAnimationFrame(() => {
+      const targetId = decodeURIComponent(hash.replace(/^#/, ''))
+      const target = targetId ? document.getElementById(targetId) : null
+      if (target && typeof target.scrollIntoView === 'function') {
+        target.scrollIntoView()
+      } else {
+        const previousHash = window.location.hash
+        if (previousHash === hash) {
+          window.location.hash = ''
+        }
+        window.location.hash = hash
+      }
+    })
+    return true
+  }
+
   shouldSyncScroll({ cursor, winline, winheight, options }) {
     const cursorKey = `${this.bufnr}:${cursor[1]}:${winline}:${winheight}:${options.sync_scroll_type || 'middle'}`
 
@@ -277,7 +344,12 @@ export default class PreviewPage extends React.Component {
 
   componentDidMount() {
     this.suppressInitialScroll = true
+    document.addEventListener('click', this.handleDocumentClick)
     this.startSocket(this.getBufnrFromPathname())
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener('click', this.handleDocumentClick)
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -301,6 +373,76 @@ export default class PreviewPage extends React.Component {
 
   onChangeBufnr(bufnr) {
     this.startSocket(bufnr)
+  }
+
+  async openMarkdownLink(href) {
+    const socket = window.socket
+    if (!socket) {
+      window.alert('Preview socket is disconnected')
+      return
+    }
+
+    const result = await new Promise((resolve) => {
+      socket.once('open_markdown_link_result', resolve)
+      socket.emit('open_markdown_link', {
+        currentFilePath: this.currentFilePath,
+        href
+      })
+    })
+
+    if (!result || !result.ok) {
+      if (result && result.kind === 'external' && result.href) {
+        window.location.assign(result.href)
+        return
+      }
+
+      window.alert(result && result.error ? result.error : `Failed to open markdown link: ${href}`)
+      return
+    }
+
+    this.pendingAnchorHash = result.hash || ''
+    this.pendingNavigation = true
+
+    if (Number(result.bufnr) === Number(this.bufnr)) {
+      this.pendingNavigation = false
+      if (!this.restorePendingAnchor()) {
+        this.restoreViewportState({ top: 0, left: 0 })
+      }
+      return
+    }
+
+    this.startSocket(result.bufnr)
+  }
+
+  handleDocumentClick(event) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return
+    }
+
+    const link = getClosestAnchorElement(event.target)
+    if (!link || link.target === '_blank' || link.hasAttribute('download')) {
+      return
+    }
+
+    const markdownRoot = document.querySelector('.markdown-body')
+    if (!markdownRoot || !markdownRoot.contains(link)) {
+      return
+    }
+
+    const href = link.getAttribute('href') || ''
+    if (!shouldHandleLocalMarkdownHref(href)) {
+      return
+    }
+
+    event.preventDefault()
+    this.openMarkdownLink(href)
   }
 
   onRefreshContent({
@@ -396,11 +538,21 @@ export default class PreviewPage extends React.Component {
     this.preContent = newContent
     this.preReviewCommentsSignature = reviewCommentsSignature
     this.reviewComments = reviewComments || { comments: [] }
+    this.currentFilePath = name
 
     const shouldSyncScroll = this.shouldSyncScroll({ cursor, winline, winheight, options })
-    const viewportState = this.captureViewportState()
+    const navigationPending = this.pendingNavigation
+    const viewportState = navigationPending ? { top: 0, left: 0 } : this.captureViewportState()
 
     const refreshScroll = () => {
+      if (navigationPending) {
+        this.pendingNavigation = false
+        if (!this.restorePendingAnchor()) {
+          this.restoreViewportState({ top: 0, left: 0 })
+        }
+        return
+      }
+
       if (isActive && !options.disable_sync_scroll && shouldSyncScroll) {
         scrollToLine[options.sync_scroll_type || 'middle']({
           cursor: cursor[1],

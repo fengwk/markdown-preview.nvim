@@ -1,7 +1,9 @@
 exports.run = function () {
   // attach nvim
   const { plugin } = require('./nvim')
+  const fs = require('fs')
   const http = require('http')
+  const path = require('path')
   const websocket = require('socket.io')
 
   const opener = require('./lib/util/opener')
@@ -14,6 +16,125 @@ exports.run = function () {
   const routes = require('./routes')
 
   let clients = {}
+
+  const MARKDOWN_FILE_REGEXP = /\.(md|markdown|mdown|mkdn|mkd)$/i
+
+  function splitHrefTarget (href = '') {
+    const hashIndex = href.indexOf('#')
+    const hash = hashIndex >= 0 ? href.slice(hashIndex) : ''
+    const hrefWithoutHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href
+    const queryIndex = hrefWithoutHash.indexOf('?')
+
+    return {
+      pathname: queryIndex >= 0 ? hrefWithoutHash.slice(0, queryIndex) : hrefWithoutHash,
+      hash
+    }
+  }
+
+  function isExternalHref (href = '') {
+    if (/^[a-zA-Z]:[\\/]/.test(href)) {
+      return false
+    }
+    return /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)
+  }
+
+  function isMarkdownFilePath (filePath = '') {
+    return MARKDOWN_FILE_REGEXP.test(filePath)
+  }
+
+  function resolveMarkdownLinkPath (currentFilePath, href = '') {
+    if (!href || href[0] === '#' || isExternalHref(href)) {
+      return null
+    }
+
+    const { pathname, hash } = splitHrefTarget(href)
+    if (!pathname) {
+      return null
+    }
+
+    let decodedPathname = pathname
+    try {
+      decodedPathname = decodeURIComponent(pathname)
+    } catch (e) {}
+
+    if (!isMarkdownFilePath(decodedPathname)) {
+      return null
+    }
+
+    const baseDir = currentFilePath ? path.dirname(currentFilePath) : process.cwd()
+    const resolvedPath = path.normalize(path.isAbsolute(decodedPathname)
+      ? decodedPathname
+      : path.resolve(baseDir, decodedPathname))
+
+    return {
+      resolvedPath,
+      hash
+    }
+  }
+
+  async function ensureBufferLoadedForPath (filePath) {
+    let bufnr = Number(await plugin.nvim.call('bufnr', [filePath]))
+    if (!bufnr || bufnr < 0) {
+      bufnr = Number(await plugin.nvim.call('bufadd', [filePath]))
+    }
+
+    if (!bufnr || bufnr < 0) {
+      return null
+    }
+
+    await plugin.nvim.call('bufload', [bufnr])
+    await plugin.nvim.call('mkdp#autocmd#init_buf', [bufnr])
+    return bufnr
+  }
+
+  async function openMarkdownLinkTarget ({ currentFilePath, href }) {
+    if (isExternalHref(href)) {
+      return {
+        ok: false,
+        kind: 'external',
+        href,
+        error: 'External links should be opened by the browser'
+      }
+    }
+
+    const resolved = resolveMarkdownLinkPath(currentFilePath, href)
+    if (!resolved) {
+      return {
+        ok: false,
+        error: 'Only local markdown file links are supported in preview navigation'
+      }
+    }
+
+    const { resolvedPath, hash } = resolved
+    if (!fs.existsSync(resolvedPath)) {
+      return {
+        ok: false,
+        error: `Markdown file not found: ${resolvedPath}`
+      }
+    }
+
+    if (fs.statSync(resolvedPath).isDirectory()) {
+      return {
+        ok: false,
+        error: `Target is a directory, not a markdown file: ${resolvedPath}`
+      }
+    }
+
+    const bufnr = await ensureBufferLoadedForPath(resolvedPath)
+    if (!bufnr) {
+      return {
+        ok: false,
+        error: `Failed to open markdown buffer: ${resolvedPath}`
+      }
+    }
+
+    return {
+      ok: true,
+      bufnr,
+      path: resolvedPath,
+      hash
+    }
+  }
 
   const openUrl = (url, browser) => {
     const handler = opener(url, browser)
@@ -118,6 +239,11 @@ exports.run = function () {
           })
         }
       }
+    })
+
+    client.on('open_markdown_link', async function ({ currentFilePath, href } = {}) {
+      const result = await openMarkdownLinkTarget({ currentFilePath, href })
+      client.emit('open_markdown_link_result', result)
     })
 
     client.on('disconnect', function () {
