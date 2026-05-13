@@ -31,7 +31,11 @@ exports.run = function () {
     return filetypes.length ? filetypes : ['markdown']
   }
 
-  function shouldRenderAsMarkdown (filetype, markdownFiletypes) {
+  function shouldRenderAsMarkdown (filetype, markdownFiletypes, name) {
+    if (MARKDOWN_FILE_REGEXP.test(String(name || ''))) {
+      return true
+    }
+
     return markdownFiletypes.includes(String(filetype || '').trim())
   }
 
@@ -46,8 +50,8 @@ exports.run = function () {
     return language || 'text'
   }
 
-  function buildPreviewContent (lines, filetype, markdownFiletypes) {
-    if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+  function buildPreviewContent (lines, filetype, markdownFiletypes, name) {
+    if (shouldRenderAsMarkdown(filetype, markdownFiletypes, name)) {
       return {
         lines,
         wrappedInCodeFence: false
@@ -274,7 +278,7 @@ exports.run = function () {
     const theme = await plugin.nvim.getVar('mkdp_theme')
     const name = await buffer.name
     const filetype = await detectPreviewFiletype(bufnr, name)
-    const previewContent = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
+    const previewContent = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes, name)
     const currentBuffer = await plugin.nvim.buffer
     const reviewComments = await getReviewCommentsSnapshot(plugin.nvim, bufnr)
 

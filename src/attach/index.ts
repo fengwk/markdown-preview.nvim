@@ -44,7 +44,11 @@ function normalizeMarkdownFiletypes(value: any): string[] {
   return filetypes.length ? filetypes : ['markdown']
 }
 
-function shouldRenderAsMarkdown(filetype: string, markdownFiletypes: string[]): boolean {
+function shouldRenderAsMarkdown(filetype: string, markdownFiletypes: string[], name: string): boolean {
+  if (MARKDOWN_FILE_REGEXP.test(String(name || ''))) {
+    return true
+  }
+
   return markdownFiletypes.includes(String(filetype || '').trim())
 }
 
@@ -59,8 +63,8 @@ function toCodeFenceLanguage(filetype: string): string {
   return language || 'text'
 }
 
-function buildPreviewContent(lines: string[], filetype: string, markdownFiletypes: string[]): { lines: string[], wrappedInCodeFence: boolean } {
-  if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+function buildPreviewContent(lines: string[], filetype: string, markdownFiletypes: string[], name: string): { lines: string[], wrappedInCodeFence: boolean } {
+  if (shouldRenderAsMarkdown(filetype, markdownFiletypes, name)) {
     return {
       lines,
       wrappedInCodeFence: false
@@ -121,7 +125,7 @@ export default function(options: Attach): IPlugin {
       const theme = await nvim.getVar('mkdp_theme')
       const name = await buffer.name
       const filetype = await detectPreviewFiletype(nvim, bufnr, name)
-      const previewContent = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes)
+      const previewContent = buildPreviewContent(await buffer.getLines(), filetype, markdownFiletypes, name)
       const currentBuffer = await nvim.buffer
       const reviewComments = await getReviewCommentsSnapshot(nvim, bufnr)
       app.refreshPage({

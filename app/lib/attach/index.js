@@ -15,7 +15,10 @@ function normalizeMarkdownFiletypes(value) {
         .filter(Boolean);
     return filetypes.length ? filetypes : ['markdown'];
 }
-function shouldRenderAsMarkdown(filetype, markdownFiletypes) {
+function shouldRenderAsMarkdown(filetype, markdownFiletypes, name) {
+    if (MARKDOWN_FILE_REGEXP.test(String(name || ''))) {
+        return true;
+    }
     return markdownFiletypes.includes(String(filetype || '').trim());
 }
 function getFenceMarker(content) {
@@ -27,8 +30,8 @@ function toCodeFenceLanguage(filetype) {
     const language = String(filetype || '').trim().replace(/[\s`]+/g, '');
     return language || 'text';
 }
-function buildPreviewContent(lines, filetype, markdownFiletypes) {
-    if (shouldRenderAsMarkdown(filetype, markdownFiletypes)) {
+function buildPreviewContent(lines, filetype, markdownFiletypes, name) {
+    if (shouldRenderAsMarkdown(filetype, markdownFiletypes, name)) {
         return {
             lines,
             wrappedInCodeFence: false
@@ -87,7 +90,7 @@ function default_1(options) {
             const theme = yield nvim.getVar('mkdp_theme');
             const name = yield buffer.name;
             const filetype = yield detectPreviewFiletype(nvim, bufnr, name);
-            const previewContent = buildPreviewContent(yield buffer.getLines(), filetype, markdownFiletypes);
+            const previewContent = buildPreviewContent(yield buffer.getLines(), filetype, markdownFiletypes, name);
             const currentBuffer = yield nvim.buffer;
             const reviewComments = yield (0, reviewComments_1.getReviewCommentsSnapshot)(nvim, bufnr);
             app.refreshPage({
